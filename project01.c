@@ -41,7 +41,7 @@ int vertCount = 0;
 FILE *fptr;
 
 int mazeSizeX, mazeSizeY;
-int **maze;
+// int **maze;
 
 void init(void)
 {
@@ -256,6 +256,9 @@ int main(int argc, char **argv)
 	maze = getMaze(mazeSizeX, mazeSizeY);
 	printMaze();
 
+    // Add solve maze function that returns a maze as well, and another one that returns a 2d int array
+    printSolution();
+    
 	
 
     glutInit(&argc, argv);
