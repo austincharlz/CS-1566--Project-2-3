@@ -196,113 +196,98 @@ int** getMaze(int x, int y) {
 	// redo maze walls and corners to get correct format for pillars, walls, etc
 	formatMaze();
 
-	solveMaze();
+	solveMaze(1);
 
 	return maze;
 }
 
 // -------------------------- MAZE SOLVER ----------------------------------
 
-void solveMaze() {
+void solveMazeUtil(int x, int y, int currentDir, int **visited, int directions[4][2]) {
+    // Check if out of bounds or at the exit
+    if (x < 0 || x >= totalMazeWidth || y < 0 || y >= totalMazeHeight || visited[y][x]) {
+        return;
+    }
+
+    visited[y][x] = 1;
+    solution[y][x] = 0;
+
+    // If at the exit, stop recursion
+    if (x == totalMazeWidth - 1 && y == totalMazeHeight - 2) {
+        return;
+    }
+
+    // Try directions in order: left, straight, right
+    for (int try = 0; try < 4; try++) {
+        int testDir = (currentDir - 1 + try + 4) % 4;
+        int newX = x + directions[testDir][1];
+        int newY = y + directions[testDir][0];
+
+        // Check if new cell is open and not visited
+        if (newX >= 0 && newX < totalMazeWidth && newY >= 0 && newY < totalMazeHeight && maze[newY][newX] == 0 && !visited[newY][newX]) {
+            solveMazeUtil(newX, newY, testDir, visited, directions);
+
+            // If we found a solution (end point reached), no need to backtrack
+            if (solution[totalMazeHeight - 2][totalMazeWidth - 2] == 0) {
+                return;
+            }
+        }
+    }
+
+    // Mark as failed path if no valid move found
+    solution[y][x] = 2;
+}
+
+// Input 1 to have it default from start of maze
+// Input any other number to start at a different point
+void solveMaze(int normal) {
     // Create solution maze, same dimensions as original
-    solution = (int**)malloc(totalMazeHeight * sizeof(int*));
+    solution = (int **)malloc(totalMazeHeight * sizeof(int *));
     for (int i = 0; i < totalMazeHeight; i++) {
-        solution[i] = calloc(totalMazeWidth, sizeof(int));
+        solution[i] = (int *)calloc(totalMazeWidth, sizeof(int));
     }
 
-    // Ensure maze is initialized properly
-    if (maze == NULL) {
-        fprintf(stderr, "Error: maze is not initialized.\n");
-        exit(EXIT_FAILURE);
-    }
-
-    // initialize all cells to 1 first in solution
+    // Initialize the solution with 1s (wall)
     for (int y = 0; y < totalMazeHeight; y++) {
         for (int x = 0; x < totalMazeWidth; x++) {
             solution[y][x] = 1;
         }
     }
 
-    // Start at entrance
-    int x = 0, y = 1;
-    int currentDir = 0;  // 0: right, 1: down, 2: left, 3: up
-    int directions[4][2] = {{0, 1}, {1, 0}, {0, -1}, {-1, 0}};
-
-    // Track visited cells to prevent revisiting and enable backtracking
+    // Track visited cells
     int **visited = (int **)malloc(totalMazeHeight * sizeof(int *));
     for (int i = 0; i < totalMazeHeight; i++) {
         visited[i] = (int *)calloc(totalMazeWidth, sizeof(int));
     }
 
-    while (x != totalMazeWidth - 1 || y != totalMazeHeight - 2) {
-        // Mark current path and visited with 0
-        if (x < 0 || x >= totalMazeWidth || y < 0 || y >= totalMazeHeight) {
-            fprintf(stderr, "Error: Out of bounds access at (%d, %d).\n", x, y);
-            exit(EXIT_FAILURE);
-        }
-        solution[y][x] = 0;
-        visited[y][x] = 1;
+    // Directions: right, down, left, up
+    int directions[4][2] = {{0, 1}, {1, 0}, {0, -1}, {-1, 0}};
 
-        int moved = 0;
-        // Try directions in order: left, straight, right
-        for (int try = 0; try < 4; try++) {
-            int testDir = (currentDir - 1 + try + 4) % 4;
-            int newX = x + directions[testDir][1];
-            int newY = y + directions[testDir][0];
 
-            // Check if new cell is open and not visited
-            if (newX >= 0 && newX < totalMazeWidth && newY >= 0 && newY < totalMazeHeight && maze[newY][newX] == 0 && visited[newY][newX] == 0) {
-                x = newX;
-                y = newY;
-                currentDir = testDir;
-                moved = 1;
-                break;
-            }
-        }
-
-        // If no move possible, backtrack
-        if (!moved) {
-            solution[y][x] = 2;  // Reset current path to wall
-             
-            // Find a cell with an unvisited neighbor
-            int backtracked = 0;
-            for (int by = 1; by < totalMazeHeight - 1; by++) {
-                for (int bx = 1; bx < totalMazeWidth - 1; bx++) {
-                    if (solution[by][bx] == 0) {
-                        for (int d = 0; d < 4; d++) {
-                            int newX = bx + directions[d][1];
-                            int newY = by + directions[d][0];
-                            
-                            if (newX >= 0 && newX < totalMazeWidth && newY >= 0 && newY < totalMazeHeight && maze[newY][newX] == 0 && visited[newY][newX] == 0) {
-                                x = bx;
-                                y = by;
-                                currentDir = d;
-                                backtracked = 1;
-                                break;
-                            }
-                        }
-                    }
-                    if (backtracked) break;
-                }
-                if (backtracked) break;
-            }
-
-            // If no path found, maze is unsolvable
-            if (!backtracked) break;
-        }
+    // Start solving from the entrance
+    if(normal == 1){
+        // x, y, curDirection, visited int array, direction array
+        solveMazeUtil(0, 1, 0, visited, directions);
+    }
+    else{
+        int yInput, xInput;
+        printf("Enter the row (y): \n");
+        scanf("%d", &yInput);
+        printf("Now enter the col (x): \n");
+        scanf("%d", &xInput);
+        solveMazeUtil(xInput, yInput, 0, visited, directions);
     }
 
-    // Mark exit
-    if (x >= 0 && x < totalMazeWidth && y >= 0 && y < totalMazeHeight) {
-        solution[y][x] = 0;
-    }
-
+    // x, y, curDirection
+    int yInput, xInput;
+    
     // Free visited array
     for (int i = 0; i < totalMazeHeight; i++) {
         free(visited[i]);
     }
     free(visited);
 }
+
 
 
 void printSolution() {

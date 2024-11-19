@@ -256,9 +256,15 @@ int main(int argc, char **argv)
 	maze = getMaze(mazeSizeX, mazeSizeY);
 	printMaze();
 
+    printf("\n------------------------------------ Break Between Mazes ------------------------------------\n\n");
+
     // Add solve maze function that returns a maze as well, and another one that returns a 2d int array
     printSolution();
-    
+
+    printf("\n------------------------------------ Break Between Mazes ------------------------------------\n\n");
+
+    solveMaze(0);
+    printSolution();    
 	
 
     glutInit(&argc, argv);
