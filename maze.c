@@ -228,7 +228,7 @@ void solveMazeUtil(int x, int y, int currentDir, int **visited, int directions[4
             solveMazeUtil(newX, newY, testDir, visited, directions);
 
             // If we found a solution (end point reached), no need to backtrack
-            if (solution[totalMazeHeight - 2][totalMazeWidth - 2] == 0) {
+            if (solution[totalMazeHeight - 2][totalMazeWidth - 1] == 0) {
                 return;
             }
         }
