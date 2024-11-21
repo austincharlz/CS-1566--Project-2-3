@@ -43,6 +43,7 @@ GLuint projection_location;
 int mazeSizeX, mazeSizeY;
 int num_vertices = 0; // CALCULATE NUMBER OF TRIANGLES NEEDED USING NUMBER OF CUBES NEEDED
 int vertCount = 0;
+int blockIndex = 0;	// global so you don't have to provide it to every call of placeBlock
 
 mat4 current_transformation_matrix = {{1,0,0,0},{0,1,0,0},{0,0,1,0},{0,0,0,1}};
 mat4 model_view = {{1,0,0,0},{0,1,0,0},{0,0,1,0},{0,0,0,1}};
@@ -121,7 +122,7 @@ void setGrass(int blockIndex) {
 	tex_coords[ (blockIndex * 36) + 35] = (vec2) {0.50, 0.75};
 }
 
-void setTexture(int blockIndex, int texture) {
+void setTexture(int texture) {
 	// grass blocks are weird they need three separate textures, hard code that shit
 	// bamboo blocks are too but we are realistically never gonna use them so whatever
 	if (texture == T_GRASS) {
@@ -175,7 +176,7 @@ void setTexture(int blockIndex, int texture) {
 		break;
 	case T_PLANK:
 		texX = 0.75;
-		texY = 0.75;
+		texY = 0.50;
 		break;
 	case T_DIRT:
 		texX = 0.75;
@@ -236,7 +237,7 @@ void setTexture(int blockIndex, int texture) {
 }
 
 // To make this behave like WORLD x,y,z coordinates, swap the y and z coordinates when you call this!
-void placeBlock(int blockX, int blockY, int blockZ, int blockIndex, int texture) {
+void placeBlock(int blockX, int blockY, int blockZ, int texture) {
 	// front
 	positions[ (blockIndex * 36) + 0 ] = (vec4) { blockX + (0.5), blockY + (-0.5),  blockZ + (0.5),  1.0};
 	positions[ (blockIndex * 36) + 1 ] = (vec4) { blockX + (-0.5), blockY + (0.5),  blockZ + (0.5),  1.0};
@@ -284,7 +285,9 @@ void placeBlock(int blockX, int blockY, int blockZ, int blockIndex, int texture)
 	positions[ (blockIndex * 36) + 34 ] = (vec4) {  blockX + (-0.5), blockY + (0.5), blockZ + (0.5), 1.0};
 	positions[ (blockIndex * 36) + 35 ] = (vec4) {  blockX + (-0.5), blockY + (0.5), blockZ + (-0.5), 1.0};
 
-	setTexture(blockIndex, texture);
+	setTexture(texture);
+
+	blockIndex++;
 }
 
 void init(void)
@@ -301,33 +304,35 @@ void init(void)
     positions = (vec4 *) malloc(sizeof(vec4) * num_vertices);
     tex_coords = (vec2 *) malloc(sizeof(vec2) * num_vertices);
 
-	int blockIndex = 0;
+	int x_offset = (mazeSizeX * 2 + 1) / 2;
+	int y_offset = (mazeSizeY * 2 + 1) / 2;
 
-	int testYBound = (mazeSizeY * 2 + 1);
-	int testXBound = (mazeSizeX * 2 + 1);
+	for (int y = 0; y < (2 * mazeSizeY) + 1; y++) {
+		for (int x = 0; x < (2 * mazeSizeX) + 1; x++) {
+			for (int z = 0; z < 3; z++) {	// looping to 3 for maze height
 
-	testXBound = testYBound = 1;
-	
-	for (int y = 0; y < testYBound; y++) {
-		for (int x = 0; x < testXBound; x++) {
-			// making a square island with randomized textures to test!
-			placeBlock(x - (int)((mazeSizeX * 2 + 1) / 2), 0, y - (int)((mazeSizeX * 2 + 1) / 2), blockIndex, randInRange(0, 13));
-			blockIndex++;
+				// using RNG to skip blocks!
+				if (z == 1) {			// layer 2 - very low likelihood of skipping block
+					if (randInRange(1, 100) < 5 ) {	// 5% chance
+						continue;
+					}
+				} else if (z == 2) {	// layer 3 - moderate likelihood to skip
+					if (randInRange(1, 100) < 25 ) {	// 25% chance
+						continue;
+					}
+				}
+
+				int cell = maze[y][x]; 		// getting current cell
+				if (cell == BLANK_CELL) {
+					// blank cell - do nothing!
+				} else if (cell == CORNER_CELL) {
+					placeBlock(x - x_offset, z, y - y_offset, randInRange(4, 6));
+				} else if (cell == WALL_CELL) {
+					placeBlock(x - x_offset, z, y - y_offset, randInRange(2, 3));
+				}
+			}
 		}
 	}
-
-	// for (int y = 0; y < (2 * mazeSizeY) + 1; y++) {
-	// 	for (int x = 0; x < (2 * mazeSizeX) + 1; x++) {
-	// 		int cell = maze[y][x];					// current cell
-	// 		if (cell == BLANK_CELL) {
-	// 			// do nothing!
-	// 		} else if (cell == CORNER_CELL) {		// CORNER CELL
-	// 			genCube(x, y, CORNER_CELL);			// generating the cube in world
-	// 		} else if (cell == WALL_CELL) {
-	// 			genCube(x, y, WALL_CELL);
-	// 		}
-	// 	}
-	// }
 
     float numTriangles = num_vertices/3.0;
 
@@ -337,7 +342,7 @@ void init(void)
     int tex_height = 64;
     GLubyte my_texels[tex_width][tex_height][3];
 
-    // FILE *fp = fopen("textures01.raw", "r");
+	// code copied from lab 6 - testing
     FILE *fp = fopen("textures02.raw", "r");
     if(fp != NULL)
 	printf("[textureTemplate] Successfully open a texture file.\n");
@@ -504,12 +509,19 @@ void motion(int x, int y){ //TODO: Edit this to rotate the pyramid, add a rotate
 void keyboard(unsigned char key, int mousex, int mousey)
 {
     // Causes the program to terminate if the user presses q
-    if(key == 'q')
+    if(key == 'q') {
 #ifndef __APPLE__
     	glutLeaveMainLoop();
 #else
 		exit(0);
 #endif
+	} else if(key == 'i'){ // Scroll wheel up - ALSO ADDING KEY 'i' BECAUSE MACOS SUCKS
+        mat4 scale_matrix = scale(1.02,1.02,1.02);
+        current_transformation_matrix = matMult(scale_matrix, current_transformation_matrix);
+    } else if(key == 'o'){ // Scroll wheel down - ALSO ADDING KEY 'O' BECAUSE MACOS SUCKS
+        mat4 scale_matrix = scale(1/1.02,1/1.02,1/1.02);
+        current_transformation_matrix = matMult(scale_matrix, current_transformation_matrix);
+    }
 
     // glutPostRedisplay();
 }
@@ -533,10 +545,10 @@ int main(int argc, char **argv)
     // Add solve maze function that returns a maze as well, and another one that returns a 2d int array
     printSolution();
 
-    printf("\n------------------------------------ Break Between Mazes ------------------------------------\n\n");
+    // printf("\n------------------------------------ Break Between Mazes ------------------------------------\n\n");
 
-    solveMaze(0);
-    printSolution();    
+    // solveMaze(0);
+    // printSolution();    
 	
 
     glutInit(&argc, argv);
