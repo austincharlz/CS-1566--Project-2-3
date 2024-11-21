@@ -29,46 +29,335 @@
 #include <stdio.h>
 #include <stdbool.h>
 
-
-int num_vertices = 0; // CALCULATE NUMBER OF TRIANGLES NEEDED USING NUMBER OF CUBES NEEDED
-mat4 current_transformation_matrix = {{1,0,0,0},{0,1,0,0},{0,0,1,0},{0,0,0,1}};
-float curScale = 1;
-mat4 trans_matrix = {{1,0,0,0},{0,1,0,0},{0,0,1,0},{0,0,0,1}};
-GLuint ctm_location;
-GLboolean cpGenerate = true;
-float prevX=512, prevY=512, prevZ=512;
-int vertCount = 0;
 FILE *fptr;
 
+float curScale = 1;
+float prevX=512, prevY=512, prevZ=512;
+
+GLboolean cpGenerate = true;
+
+GLuint ctm_location;
+GLuint model_view_location;
+GLuint projection_location;
+
 int mazeSizeX, mazeSizeY;
+int num_vertices = 0; // CALCULATE NUMBER OF TRIANGLES NEEDED USING NUMBER OF CUBES NEEDED
+int vertCount = 0;
+
+mat4 current_transformation_matrix = {{1,0,0,0},{0,1,0,0},{0,0,1,0},{0,0,0,1}};
+mat4 model_view = {{1,0,0,0},{0,1,0,0},{0,0,1,0},{0,0,0,1}};
+mat4 projection = {{1,0,0,0},{0,1,0,0},{0,0,1,0},{0,0,0,1}};
+mat4 trans_matrix = {{1,0,0,0},{0,1,0,0},{0,0,1,0},{0,0,0,1}};
+
+vec2 *tex_coords;
+vec4 *positions;
 // int **maze;
 
+#define BLANK_CELL 0
+#define CORNER_CELL 1
+#define WALL_CELL 2
+
+#define T_GRASS 0
+#define T_GRAVEL 1
+#define T_COBBLE 2
+#define T_COBBLE_MOSSY 3
+#define T_STONE_BRICK 4
+#define T_STONE_BRICK_CRACKED 5
+#define T_STONE_BRICK_MOSSY 6
+#define T_BRICK 7
+#define T_GRANITE_POLISHED 8
+#define T_GRANITE_CRACKED 9
+#define T_SANDSTONE 10
+#define T_PLANK 11
+#define T_DIRT 12
+
+void setGrass(int blockIndex) {
+	// front
+	tex_coords[ (blockIndex * 36) + 0] = (vec2) {0.75, 1.00};
+	tex_coords[ (blockIndex * 36) + 1] = (vec2) {0.50, 0.75};
+	tex_coords[ (blockIndex * 36) + 2] = (vec2) {0.50, 1.00};
+	tex_coords[ (blockIndex * 36) + 3] = (vec2) {0.75, 1.00};
+	tex_coords[ (blockIndex * 36) + 4] = (vec2) {0.75, 0.75};
+	tex_coords[ (blockIndex * 36) + 5] = (vec2) {0.50, 0.75};
+
+	// right
+	tex_coords[ (blockIndex * 36) + 6] = (vec2) {0.75, 1.00};
+	tex_coords[ (blockIndex * 36) + 7] = (vec2) {0.50, 0.75};
+	tex_coords[ (blockIndex * 36) + 8] = (vec2) {0.50, 1.00};
+	tex_coords[ (blockIndex * 36) + 9] = (vec2) {0.75, 1.00};
+	tex_coords[ (blockIndex * 36) + 10] = (vec2) {0.75, 0.75};
+	tex_coords[ (blockIndex * 36) + 11] = (vec2) {0.50, 0.75};
+
+	// top
+	tex_coords[ (blockIndex * 36) + 12] = (vec2) {0.25, 0.25};
+	tex_coords[ (blockIndex * 36) + 13] = (vec2) {0.00, 0.00};
+	tex_coords[ (blockIndex * 36) + 14] = (vec2) {0.00, 0.25};
+	tex_coords[ (blockIndex * 36) + 15] = (vec2) {0.25, 0.25};
+	tex_coords[ (blockIndex * 36) + 16] = (vec2) {0.25, 0.00};
+	tex_coords[ (blockIndex * 36) + 17] = (vec2) {0.00, 0.00};
+
+	// bottom
+	tex_coords[ (blockIndex * 36) + 18] = (vec2) {1.00, 1.00};
+	tex_coords[ (blockIndex * 36) + 19] = (vec2) {0.75, 0.75};
+	tex_coords[ (blockIndex * 36) + 20] = (vec2) {0.75, 1.00};
+	tex_coords[ (blockIndex * 36) + 21] = (vec2) {1.00, 1.00};
+	tex_coords[ (blockIndex * 36) + 22] = (vec2) {1.00, 0.75};
+	tex_coords[ (blockIndex * 36) + 23] = (vec2) {0.75, 0.75};
+
+	// back
+	tex_coords[ (blockIndex * 36) + 24] = (vec2) {0.75, 1.00};
+	tex_coords[ (blockIndex * 36) + 25] = (vec2) {0.50, 0.75};
+	tex_coords[ (blockIndex * 36) + 26] = (vec2) {0.50, 1.00};
+	tex_coords[ (blockIndex * 36) + 27] = (vec2) {0.75, 1.00};
+	tex_coords[ (blockIndex * 36) + 28] = (vec2) {0.75, 0.75};
+	tex_coords[ (blockIndex * 36) + 29] = (vec2) {0.50, 0.75};
+
+	// left
+	tex_coords[ (blockIndex * 36) + 30] = (vec2) {0.75, 1.00};
+	tex_coords[ (blockIndex * 36) + 31] = (vec2) {0.50, 0.75};
+	tex_coords[ (blockIndex * 36) + 32] = (vec2) {0.50, 1.00};
+	tex_coords[ (blockIndex * 36) + 33] = (vec2) {0.75, 1.00};
+	tex_coords[ (blockIndex * 36) + 34] = (vec2) {0.75, 0.75};
+	tex_coords[ (blockIndex * 36) + 35] = (vec2) {0.50, 0.75};
+}
+
+void setTexture(int blockIndex, int texture) {
+	// grass blocks are weird they need three separate textures, hard code that shit
+	// bamboo blocks are too but we are realistically never gonna use them so whatever
+	if (texture == T_GRASS) {
+		setGrass(blockIndex);
+		return;
+	}
+
+	float texX = 0;
+	float texY = 0;
+	switch (texture)
+	{
+	case T_GRAVEL:
+		texX = 0.25;
+		texY = 0.00;
+		break;
+	case T_COBBLE:
+		texX = 0.50;
+		texY = 0.00;
+		break;
+	case T_COBBLE_MOSSY:
+		texX = 0.75;
+		texY = 0.00;
+		break;
+	case T_STONE_BRICK:
+		texX = 0.00;
+		texY = 0.25;
+		break;
+	case T_STONE_BRICK_CRACKED:
+		texX = 0.25;
+		texY = 0.25;
+		break;
+	case T_STONE_BRICK_MOSSY:
+		texX = 0.50;
+		texY = 0.25;
+		break;
+	case T_BRICK:
+		texX = 0.75;
+		texY = 0.25;
+		break;
+	case T_GRANITE_POLISHED:
+		texX = 0.00;
+		texY = 0.50;
+		break;
+	case T_GRANITE_CRACKED:
+		texX = 0.25;
+		texY = 0.50;
+		break;
+	case T_SANDSTONE:
+		texX = 0.50;
+		texY = 0.50;
+		break;
+	case T_PLANK:
+		texX = 0.75;
+		texY = 0.75;
+		break;
+	case T_DIRT:
+		texX = 0.75;
+		texY = 0.75;
+		break;
+	
+	default:
+		break;
+	}
+
+	// front
+	tex_coords[ (blockIndex * 36) + 0] = (vec2) {texX + 0.25, texY + 0.25};
+	tex_coords[ (blockIndex * 36) + 1] = (vec2) {texX, texY};
+	tex_coords[ (blockIndex * 36) + 2] = (vec2) {texX, texY + 0.25};
+	tex_coords[ (blockIndex * 36) + 3] = (vec2) {texX + 0.25, texY + 0.25};
+	tex_coords[ (blockIndex * 36) + 4] = (vec2) {texX + 0.25, texY};
+	tex_coords[ (blockIndex * 36) + 5] = (vec2) {texX, texY};
+
+	// right
+	tex_coords[ (blockIndex * 36) + 6] = (vec2) {texX + 0.25, texY + 0.25};
+	tex_coords[ (blockIndex * 36) + 7] = (vec2) {texX, texY};
+	tex_coords[ (blockIndex * 36) + 8] = (vec2) {texX, texY + 0.25};
+	tex_coords[ (blockIndex * 36) + 9] = (vec2) {texX + 0.25, texY + 0.25};
+	tex_coords[ (blockIndex * 36) + 10] = (vec2) {texX + 0.25, texY};
+	tex_coords[ (blockIndex * 36) + 11] = (vec2) {texX, texY};
+
+	// top
+	tex_coords[ (blockIndex * 36) + 12] = (vec2) {texX + 0.25, texY + 0.25};
+	tex_coords[ (blockIndex * 36) + 13] = (vec2) {texX, texY};
+	tex_coords[ (blockIndex * 36) + 14] = (vec2) {texX, texY + 0.25};
+	tex_coords[ (blockIndex * 36) + 15] = (vec2) {texX + 0.25, texY + 0.25};
+	tex_coords[ (blockIndex * 36) + 16] = (vec2) {texX + 0.25, texY};
+	tex_coords[ (blockIndex * 36) + 17] = (vec2) {texX, texY};
+
+	// bottom
+	tex_coords[ (blockIndex * 36) + 18] = (vec2) {texX + 0.25, texY + 0.25};
+	tex_coords[ (blockIndex * 36) + 19] = (vec2) {texX, texY};
+	tex_coords[ (blockIndex * 36) + 20] = (vec2) {texX, texY + 0.25};
+	tex_coords[ (blockIndex * 36) + 21] = (vec2) {texX + 0.25, texY + 0.25};
+	tex_coords[ (blockIndex * 36) + 22] = (vec2) {texX + 0.25, texY};
+	tex_coords[ (blockIndex * 36) + 23] = (vec2) {texX, texY};
+
+	// back
+	tex_coords[ (blockIndex * 36) + 24] = (vec2) {texX + 0.25, texY + 0.25};
+	tex_coords[ (blockIndex * 36) + 25] = (vec2) {texX, texY};
+	tex_coords[ (blockIndex * 36) + 26] = (vec2) {texX, texY + 0.25};
+	tex_coords[ (blockIndex * 36) + 27] = (vec2) {texX + 0.25, texY + 0.25};
+	tex_coords[ (blockIndex * 36) + 28] = (vec2) {texX + 0.25, texY};
+	tex_coords[ (blockIndex * 36) + 29] = (vec2) {texX, texY};
+
+	// left
+	tex_coords[ (blockIndex * 36) + 30] = (vec2) {texX + 0.25, texY + 0.25};
+	tex_coords[ (blockIndex * 36) + 31] = (vec2) {texX, texY};
+	tex_coords[ (blockIndex * 36) + 32] = (vec2) {texX, texY + 0.25};
+	tex_coords[ (blockIndex * 36) + 33] = (vec2) {texX + 0.25, texY + 0.25};
+	tex_coords[ (blockIndex * 36) + 34] = (vec2) {texX + 0.25, texY};
+	tex_coords[ (blockIndex * 36) + 35] = (vec2) {texX, texY};
+}
+
+// To make this behave like WORLD x,y,z coordinates, swap the y and z coordinates when you call this!
+void placeBlock(int blockX, int blockY, int blockZ, int blockIndex, int texture) {
+	// front
+	positions[ (blockIndex * 36) + 0 ] = (vec4) { blockX + (0.5), blockY + (-0.5),  blockZ + (0.5),  1.0};
+	positions[ (blockIndex * 36) + 1 ] = (vec4) { blockX + (-0.5), blockY + (0.5),  blockZ + (0.5),  1.0};
+	positions[ (blockIndex * 36) + 2 ] = (vec4) { blockX + (-0.5), blockY + (-0.5),  blockZ + (0.5),  1.0};
+	positions[ (blockIndex * 36) + 3 ] = (vec4) { blockX + (0.5), blockY + (-0.5),  blockZ + (0.5),  1.0};
+	positions[ (blockIndex * 36) + 4 ] = (vec4) { blockX + (0.5), blockY + (0.5),  blockZ + (0.5),  1.0};
+	positions[ (blockIndex * 36) + 5 ] = (vec4) { blockX + (-0.5), blockY + (0.5),  blockZ + (0.5),  1.0};
+	// right
+	positions[ (blockIndex * 36) + 6 ] = (vec4)  {  blockX + (0.5), blockY + (-0.5), blockZ + (-0.5),  1.0};
+	positions[ (blockIndex * 36) + 7 ] = (vec4)  {  blockX + (0.5), blockY + (0.5), blockZ + (0.5),  1.0};
+	positions[ (blockIndex * 36) + 8 ] = (vec4)  {  blockX + (0.5), blockY + (-0.5), blockZ + (0.5),  1.0};
+	positions[ (blockIndex * 36) + 9 ] = (vec4)  {  blockX + (0.5), blockY + (-0.5), blockZ + (-0.5),  1.0};
+	positions[ (blockIndex * 36) + 10 ] = (vec4) {  blockX + (0.5), blockY + (0.5), blockZ + (-0.5),  1.0};
+	positions[ (blockIndex * 36) + 11 ] = (vec4) {  blockX + (0.5), blockY + (0.5), blockZ + (0.5),  1.0};
+
+	// top
+	positions[ (blockIndex * 36) + 12 ] = (vec4) {  blockX + (0.5), blockY + (0.5), blockZ + (0.5),  1.0};
+	positions[ (blockIndex * 36) + 13 ] = (vec4) {  blockX + (-0.5), blockY + (0.5), blockZ + (-0.5),  1.0};
+	positions[ (blockIndex * 36) + 14 ] = (vec4) {  blockX + (-0.5), blockY + (0.5), blockZ + (0.5),  1.0};
+	positions[ (blockIndex * 36) + 15 ] = (vec4) {  blockX + (0.5), blockY + (0.5), blockZ + (0.5),  1.0};
+	positions[ (blockIndex * 36) + 16 ] = (vec4) {  blockX + (0.5), blockY + (0.5), blockZ + (-0.5),  1.0};
+	positions[ (blockIndex * 36) + 17 ] = (vec4) {  blockX + (-0.5), blockY + (0.5), blockZ + (-0.5),  1.0};	
+
+	// bottom
+	positions[ (blockIndex * 36) + 18 ] = (vec4) {  blockX + (0.5), blockY + (-0.5), blockZ + (-0.5),  1.0};
+	positions[ (blockIndex * 36) + 19 ] = (vec4) {  blockX + (-0.5), blockY + (-0.5), blockZ + (0.5),  1.0};
+	positions[ (blockIndex * 36) + 20 ] = (vec4) {  blockX + (-0.5), blockY + (-0.5), blockZ + (-0.5),  1.0};
+	positions[ (blockIndex * 36) + 21 ] = (vec4) {  blockX + (0.5), blockY + (-0.5), blockZ + (-0.5),  1.0};
+	positions[ (blockIndex * 36) + 22 ] = (vec4) {  blockX + (0.5), blockY + (-0.5), blockZ + (0.5),  1.0};
+	positions[ (blockIndex * 36) + 23 ] = (vec4) {  blockX + (-0.5), blockY + (-0.5), blockZ + (0.5),  1.0};
+
+	// back
+	positions[ (blockIndex * 36) + 24 ] = (vec4) { blockX + (-0.5), blockY + (-0.5), blockZ + (-0.5), 1.0};
+	positions[ (blockIndex * 36) + 25 ] = (vec4) { blockX + (0.5), blockY + (0.5), blockZ + (-0.5), 1.0};
+	positions[ (blockIndex * 36) + 26 ] = (vec4) { blockX + (0.5), blockY + (-0.5), blockZ + (-0.5), 1.0};
+	positions[ (blockIndex * 36) + 27 ] = (vec4) { blockX + (-0.5), blockY + (-0.5), blockZ + (-0.5), 1.0};
+	positions[ (blockIndex * 36) + 28 ] = (vec4) { blockX + (-0.5), blockY + (0.5), blockZ + (-0.5), 1.0};
+	positions[ (blockIndex * 36) + 29 ] = (vec4) { blockX + (0.5), blockY + (0.5), blockZ + (-0.5), 1.0};
+
+	// left
+	positions[ (blockIndex * 36) + 30 ] = (vec4) {  blockX + (-0.5), blockY + (-0.5), blockZ + (0.5), 1.0};
+	positions[ (blockIndex * 36) + 31 ] = (vec4) {  blockX + (-0.5), blockY + (0.5), blockZ + (-0.5), 1.0};
+	positions[ (blockIndex * 36) + 32 ] = (vec4) {  blockX + (-0.5), blockY + (-0.5), blockZ + (-0.5), 1.0};
+	positions[ (blockIndex * 36) + 33 ] = (vec4) {  blockX + (-0.5), blockY + (-0.5), blockZ + (0.5), 1.0};
+	positions[ (blockIndex * 36) + 34 ] = (vec4) {  blockX + (-0.5), blockY + (0.5), blockZ + (0.5), 1.0};
+	positions[ (blockIndex * 36) + 35 ] = (vec4) {  blockX + (-0.5), blockY + (0.5), blockZ + (-0.5), 1.0};
+
+	setTexture(blockIndex, texture);
+}
+
 void init(void)
-{
-    
-    GLuint program = initShader("vshader.glsl", "fshader.glsl");
-    glUseProgram(program);
+{   
+    // GLuint program = initShader("vshader.glsl", "fshader.glsl");
+    // glUseProgram(program);
 
-    srand(time(0)); // Sets the random seed for RNG
+    srand(time(NULL)); // Sets the random seed for RNG
 
-    vec4 *positions = (vec4 *) malloc(sizeof(vec4) * num_vertices); 
+	int num_blocks = (mazeSizeX * 2 + 1) * (mazeSizeY * 2 + 1) * 3;
+	num_vertices = 36 * num_blocks;
+
+    // malloc()ate for blocks and texture coordinates
+    positions = (vec4 *) malloc(sizeof(vec4) * num_vertices);
+    tex_coords = (vec2 *) malloc(sizeof(vec2) * num_vertices);
+
+	int blockIndex = 0;
+
+	int testYBound = (mazeSizeY * 2 + 1);
+	int testXBound = (mazeSizeX * 2 + 1);
+
+	testXBound = testYBound = 1;
+	
+	for (int y = 0; y < testYBound; y++) {
+		for (int x = 0; x < testXBound; x++) {
+			// making a square island with randomized textures to test!
+			placeBlock(x - (int)((mazeSizeX * 2 + 1) / 2), 0, y - (int)((mazeSizeX * 2 + 1) / 2), blockIndex, randInRange(0, 13));
+			blockIndex++;
+		}
+	}
+
+	// for (int y = 0; y < (2 * mazeSizeY) + 1; y++) {
+	// 	for (int x = 0; x < (2 * mazeSizeX) + 1; x++) {
+	// 		int cell = maze[y][x];					// current cell
+	// 		if (cell == BLANK_CELL) {
+	// 			// do nothing!
+	// 		} else if (cell == CORNER_CELL) {		// CORNER CELL
+	// 			genCube(x, y, CORNER_CELL);			// generating the cube in world
+	// 		} else if (cell == WALL_CELL) {
+	// 			genCube(x, y, WALL_CELL);
+	// 		}
+	// 	}
+	// }
 
     float numTriangles = num_vertices/3.0;
 
-    vec4 *colors = (vec4 *) malloc(sizeof(vec4) * num_vertices); // TODO: Change the number of colors
+    printf("[textureTemplate] num_vertices: %i\n", num_vertices);
 
-    // For loop to get the colors for each triangle
-    for(int i = 0; i < numTriangles; i++){
-        // Generates a random value for RGB
-        float red = (float) rand() / RAND_MAX;
-        float green = (float) rand() / RAND_MAX;
-        float blue = (float) rand() / RAND_MAX;
+    int tex_width = 64;
+    int tex_height = 64;
+    GLubyte my_texels[tex_width][tex_height][3];
 
-        // Save the colors for the one triangle
-        colors[i*3] = (vec4) {red, green, blue, 1.0};
-        colors[(i*3)+1] = (vec4) {red, green, blue, 1.0};
-        colors[(i*3)+2] = (vec4) {red, green, blue, 1.0};
-    }
+    // FILE *fp = fopen("textures01.raw", "r");
+    FILE *fp = fopen("textures02.raw", "r");
+    if(fp != NULL)
+	printf("[textureTemplate] Successfully open a texture file.\n");
+    fread(my_texels, tex_width * tex_height * 3, 1, fp);
+    fclose(fp);
+
+    GLuint program = initShader("vshader.glsl", "fshader.glsl");
+    glUseProgram(program);
+
+    GLuint mytex[1];
+    glGenTextures(1, mytex);
+    glBindTexture(GL_TEXTURE_2D, mytex[0]);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, tex_width, tex_height, 0, GL_RGB, GL_UNSIGNED_BYTE, my_texels);
+    glTexParameterf( GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT );
+    glTexParameterf( GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT );
+    glTexParameterf( GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST );
+    glTexParameterf( GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST );
+
+    int param;
+    glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_WIDTH, &param);
     
     GLuint vao;
 	#ifndef __APPLE__
@@ -82,23 +371,34 @@ void init(void)
     GLuint buffer;
     glGenBuffers(1, &buffer);
     glBindBuffer(GL_ARRAY_BUFFER, buffer);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(vec4) * num_vertices + sizeof(vec4) * num_vertices, NULL, GL_STATIC_DRAW); // TODO: Might need to change amount of buffer data, should be amount of vertices and colors
-    glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(vec4) * num_vertices, positions); // TODO: Starts at index 0 and should be all the position vectors
-    glBufferSubData(GL_ARRAY_BUFFER, sizeof(vec4) * num_vertices, sizeof(vec4) * num_vertices, colors); // TODO: Starts after all the position vectors and contains all the color vectors
+    glBufferData(GL_ARRAY_BUFFER, sizeof(vec4) * num_vertices + sizeof(vec2) * num_vertices, NULL, GL_STATIC_DRAW);
+    glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(vec4) * num_vertices, positions);
+    glBufferSubData(GL_ARRAY_BUFFER, sizeof(vec4) * num_vertices, sizeof(vec2) * num_vertices, tex_coords);
 
     // Goes through and does all the vertex positions
     GLuint vPosition = glGetAttribLocation(program, "vPosition");
     glEnableVertexAttribArray(vPosition);
     glVertexAttribPointer(vPosition, 4, GL_FLOAT, GL_FALSE, 0, (GLvoid *) (0));
+	
+	// same but for texture coords
+    GLuint vTexCoord = glGetAttribLocation(program, "vTexCoord");
+    glEnableVertexAttribArray(vTexCoord);
+    glVertexAttribPointer(vTexCoord, 2, GL_FLOAT, GL_FALSE, 0, (GLvoid *) (sizeof(vec4) * num_vertices));
 
+	// assigning all important uniforms
     ctm_location = glGetUniformLocation(program, "ctm");
-
-    // Goes through and does all the vector colors
-    GLuint vColor = glGetAttribLocation(program, "vColor");
-    glEnableVertexAttribArray(vColor);
-    glVertexAttribPointer(vColor, 4, GL_FLOAT, GL_FALSE, 0, (GLvoid *) (sizeof(vec4) * num_vertices)); // TODO: change # of vecs
+    printf("[textureTemplate] ctm_location: %i\n", ctm_location);
+    model_view_location = glGetUniformLocation(program, "model_view");
+    printf("[textureTemplate] model_view_location: %i\n", model_view_location);
+    projection_location = glGetUniformLocation(program, "projection");
+    printf("[textureTemplate] projection_location: %i\n", projection_location);
+    
+    GLuint texture_location = glGetUniformLocation(program, "texture");
+    printf("[textureTemplate] texture_location: %i\n", texture_location);
+    glUniform1i(texture_location, 0);
 
     // Goes through and checks the depth of the objects and sets the background
+    glEnable(GL_CULL_FACE);
     glEnable(GL_DEPTH_TEST);
     glClearColor(0.0, 0.0, 0.0, 1.0); // Pretty sure this is the background color
     glDepthRange(1,0);
@@ -216,35 +516,6 @@ void keyboard(unsigned char key, int mousex, int mousey)
 
 int main(int argc, char **argv)
 {
-
-    //TODO: Ask user if they want computer programmed shapes or to read in a file input
-    // int num;
-    // printf("Enter 1 for computer generated shapes, or enter 2 to enter a filename: \n");
-    // scanf("%d", &num);
-
-    // if(num == 2){ // Read in the user input for the filename
-    //     cpGenerate = false;
-    //     printf("Please enter the filename: \n");
-    //     char* fileName = (char*)malloc(100*sizeof(char));
-    //     scanf("%s", fileName);
-    //     fptr = fopen(fileName, "r");
-    //     if(fptr == NULL){ // If pointer invalid then file could not open so close and exit program
-    //         printf("Invalid filename or just could not open %s\n", fileName);
-    //         free(fileName);
-    //         return 1;
-    //     }
-    //     else{ // Else read in the first line to set the num_vertices then continue as normal for now
-    //         char* inputSize = (char*)malloc(100*sizeof(char));
-    //         fgets(inputSize, 100, fptr);
-    //         num_vertices = atoi(inputSize);
-    //         // printf("num_vertices:%d\n",num_vertices);
-    //         // return 0;
-    //     }
-    // }
-    // else{
-    //     printf("Controls: Press 1 to see sphere, 2 for donut, 3 for taurus, Q to exit\n");
-    // }
-
 	// default size will be overridden if correct args are provided
 	mazeSizeX = 10;
 	mazeSizeY = 10;
@@ -254,6 +525,7 @@ int main(int argc, char **argv)
 	}
 
 	maze = getMaze(mazeSizeX, mazeSizeY);
+
 	printMaze();
 
     printf("\n------------------------------------ Break Between Mazes ------------------------------------\n\n");

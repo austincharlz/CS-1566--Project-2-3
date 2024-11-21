@@ -1,13 +1,16 @@
 #version 120
 
 attribute vec4 vPosition;
-attribute vec4 vColor;
-varying vec4 color;
+attribute vec2 vTexCoord;
+
+varying vec2 texCoord;
 
 uniform mat4 ctm;
+uniform mat4 model_view;
+uniform mat4 projection;
 
 void main()
 {
-	color = vColor;
-	gl_Position = ctm * vPosition;
+	texCoord = vTexCoord;
+	gl_Position = projection * model_view * ctm * vPosition;
 }
