@@ -19,455 +19,417 @@
 
 #endif  // __APPLE__
 
+#include "initShader.h"
+#include "maze.h"
+#include "myLib.h"
 #include "stdlib.h"
 
-#include "initShader.h"
-
 #include <time.h>
-#include "myLib.h"
 #include <math.h>
 #include <stdio.h>
 #include <stdbool.h>
 
-// Total 1 triangle
-int num_vertices = 50760; // Default number of vertices needed for all 3 Computer generated shapes
-mat4 current_transformation_matrix = {{1,0,0,0},{0,1,0,0},{0,0,1,0},{0,0,0,1}};
-float curScale = 1;
-mat4 trans_matrix = {{1,0,0,0},{0,1,0,0},{0,0,1,0},{0,0,0,1}};
-GLuint ctm_location;
-GLboolean cpGenerate = true;
-float prevX=512, prevY=512, prevZ=512;
-int vertCount = 0;
-int shapeToDisplay = 0; // 0 is sphere, 1 is donut, 2 is taurus
 FILE *fptr;
 
-// Each shapes starting pos
-int sphereOffset = 0;
-int donutOffset = 0;
-int taurusOffset = 0;
+float curScale = 1;
+float prevX=512, prevY=512, prevZ=512;
 
-void drawSphere(vec4 *positions, int offset){ // Takes 3888 vertices, NOPE NOW 3672
+GLboolean cpGenerate = true;
 
-    // vec4 *positions = (vec4 *) malloc(sizeof(vec4) * num_vertices); 
+GLuint ctm_location;
+GLuint model_view_location;
+GLuint projection_location;
 
-    // float numTriangles = num_vertices/3.0;
-    // printf("vertCountSphereStart:%d\n",vertCount);
-    positions[0+offset] = (vec4){0.0,0.0,1.0,1.0}; // Origin point (very first point of the sphere)
-    positions[1+offset] = mvMult(rotateY(10),positions[0+offset]); // bottom right square
-    positions[2+offset] = mvMult(rotateX(-10),positions[0+offset]); // top left of square
-    positions[3+offset] = positions[2+offset];
-    positions[4+offset] = positions[1+offset];
-    positions[5+offset] = mvMult(matMult(rotateY(10),rotateX(-10)),positions[0+offset]);
-    vertCount += 6;
+int mazeSizeX, mazeSizeY;
+int num_vertices = 0; // CALCULATE NUMBER OF TRIANGLES NEEDED USING NUMBER OF CUBES NEEDED
+int vertCount = 0;
+int blockIndex = 0;	// global so you don't have to provide it to every call of placeBlock
 
-    // Top part of sphere // TODO: combine with the for loop underneath
-    for(int i = 1; i < 36; i++){ // Creates the first band
-        positions[(i*6)+offset] = mvMult(rotateY(10),positions[((i-1)*6)+offset]);
-        positions[(i*6)+1+offset] = mvMult(rotateY(10),positions[(i-1)*6 +1+offset]);
-        positions[(i*6)+2+offset] = mvMult(rotateY(10),positions[(i-1)*6 +2+offset]);
-        positions[(i*6)+3+offset] = mvMult(rotateY(10),positions[(i-1)*6 +3+offset]);
-        positions[(i*6)+4+offset] = mvMult(rotateY(10),positions[(i-1)*6 +4+offset]);
-        positions[(i*6)+5+offset] = mvMult(rotateY(10),positions[(i-1)*6 +5+offset]);
-        vertCount += 6;
-    }
+mat4 current_transformation_matrix = {{1,0,0,0},{0,1,0,0},{0,0,1,0},{0,0,0,1}};
+mat4 model_view = {{1,0,0,0},{0,1,0,0},{0,0,1,0},{0,0,0,1}};
+mat4 projection = {{1,0,0,0},{0,1,0,0},{0,0,1,0},{0,0,0,1}};
+mat4 trans_matrix = {{1,0,0,0},{0,1,0,0},{0,0,1,0},{0,0,0,1}};
+int is_animating;
+int num_steps;
+int step_counter;
 
-    // Top part of sphere
-    // for(int k = 1; k < 9; k++){
-    for(int k = 1; k < 8; k++){
-        positions[(k*216)+offset] = mvMult(rotateX(-10*k),positions[0+offset]);
-        positions[(k*216)+1+offset] = mvMult(rotateY(10),positions[k*216+offset]); // bottom right square
-        positions[(k*216)+2+offset] = mvMult(rotateX(-10),positions[k*216+offset]); // top left of square
-        positions[(k*216)+3+offset] = positions[(k*216)+2];
-        positions[(k*216)+4+offset] = positions[(k*216)+1];
-        positions[(k*216)+5+offset] = mvMult(matMult(rotateY(10),rotateX(-10)),positions[k*216+offset]);
-        vertCount += 6;
+vec2 *tex_coords;
+vec4 *positions;
+// int **maze;
 
-        for(int n = 1; n <36;n++){
-            positions[n*6+(216*k)+offset] = mvMult(rotateY(10),positions[(n-1)*6+(216*k)+offset]);
-            positions[(n*6)+1+(216*k)+offset] = mvMult(rotateY(10),positions[(n-1)*6 +1+(216*k)+offset]);
-            positions[(n*6)+2+(216*k)+offset] = mvMult(rotateY(10),positions[(n-1)*6 +2+(216*k)+offset]);
-            positions[(n*6)+3+(216*k)+offset] = mvMult(rotateY(10),positions[(n-1)*6 +3+(216*k)+offset]);
-            positions[(n*6)+4+(216*k)+offset] = mvMult(rotateY(10),positions[(n-1)*6 +4+(216*k)+offset]);
-            positions[(n*6)+5+(216*k)+offset] = mvMult(rotateY(10),positions[(n-1)*6 +5+(216*k)+offset]);
-            vertCount += 6;
-        }
-    }
+#define BLANK_CELL 0
+#define CORNER_CELL 1
+#define WALL_CELL 2
 
-    // Bottom part of sphere
-    int posOffset = vertCount;
-    // for(int k = 0; k < 9; k++){
-    for(int k = 0; k < 8; k++){
-        positions[(k*216)+posOffset] = mvMult(rotateX(10*k),positions[0+offset]);
-        positions[(k*216)+1+posOffset] = mvMult(rotateY(-10),positions[k*216+posOffset]); // bottom right square
-        positions[(k*216)+2+posOffset] = mvMult(rotateX(10),positions[k*216+posOffset]); // top left of square
-        positions[(k*216)+3+posOffset] = positions[(k*216)+2+posOffset];
-        positions[(k*216)+4+posOffset] = positions[(k*216)+1+posOffset];
-        positions[(k*216)+5+posOffset] = mvMult(matMult(rotateY(-10),rotateX(10)),positions[k*216+posOffset]);
-        vertCount += 6;
+#define T_GRASS 0
+#define T_GRAVEL 1
+#define T_COBBLE 2
+#define T_COBBLE_MOSSY 3
+#define T_STONE_BRICK 4
+#define T_STONE_BRICK_CRACKED 5
+#define T_STONE_BRICK_MOSSY 6
+#define T_BRICK 7
+#define T_GRANITE_POLISHED 8
+#define T_GRANITE_CRACKED 9
+#define T_SANDSTONE 10
+#define T_PLANK 11
+#define T_DIRT 12
 
-        for(int n = 1; n <36;n++){
-            positions[n*6+(216*k)+posOffset] = mvMult(rotateY(-10),positions[(n-1)*6+(216*k)+posOffset]);
-            positions[(n*6)+1+(216*k)+posOffset] = mvMult(rotateY(-10),positions[(n-1)*6 +1+(216*k)+posOffset]);
-            positions[(n*6)+2+(216*k)+posOffset] = mvMult(rotateY(-10),positions[(n-1)*6 +2+(216*k)+posOffset]);
-            positions[(n*6)+3+(216*k)+posOffset] = mvMult(rotateY(-10),positions[(n-1)*6 +3+(216*k)+posOffset]);
-            positions[(n*6)+4+(216*k)+posOffset] = mvMult(rotateY(-10),positions[(n-1)*6 +4+(216*k)+posOffset]);
-            positions[(n*6)+5+(216*k)+posOffset] = mvMult(rotateY(-10),positions[(n-1)*6 +5+(216*k)+posOffset]);
-            vertCount += 6;
-        }
-    }  
+void setGrass(int blockIndex) {
+	// front
+	tex_coords[ (blockIndex * 36) + 0] = (vec2) {0.75, 1.00};
+	tex_coords[ (blockIndex * 36) + 1] = (vec2) {0.50, 0.75};
+	tex_coords[ (blockIndex * 36) + 2] = (vec2) {0.50, 1.00};
+	tex_coords[ (blockIndex * 36) + 3] = (vec2) {0.75, 1.00};
+	tex_coords[ (blockIndex * 36) + 4] = (vec2) {0.75, 0.75};
+	tex_coords[ (blockIndex * 36) + 5] = (vec2) {0.50, 0.75};
 
-    // Now create the bottom and top part of the spheres
-    vec4 * top = (vec4 *) malloc(sizeof(vec4)*36);
-    vec4 * bottom = (vec4 *) malloc(sizeof(vec4)*36);
-    top[0] = mvMult(rotateX(-70),positions[0+offset]);
-    bottom[0] = mvMult(rotateX(80),positions[0+offset]);
-    for(int i = 1; i < 36; i++){// Gets the array for both top and bottom parts of the sphere
-        top[i] = mvMult(rotateY(10), top[i-1]); 
-        bottom[i] = mvMult(rotateY(10), bottom[i-1]);
-    }
+	// right
+	tex_coords[ (blockIndex * 36) + 6] = (vec2) {0.75, 1.00};
+	tex_coords[ (blockIndex * 36) + 7] = (vec2) {0.50, 0.75};
+	tex_coords[ (blockIndex * 36) + 8] = (vec2) {0.50, 1.00};
+	tex_coords[ (blockIndex * 36) + 9] = (vec2) {0.75, 1.00};
+	tex_coords[ (blockIndex * 36) + 10] = (vec2) {0.75, 0.75};
+	tex_coords[ (blockIndex * 36) + 11] = (vec2) {0.50, 0.75};
 
-    int offset2 = vertCount;
-    for(int i = 0; i < 36; i++){
-        if(i==35){
-            positions[offset2+(i*3)] = top[i];
-            positions[offset2+(i*3)+1] = top[0];
-            positions[offset2+(i*3)+2] = (vec4){0.0,1.0,0.0,1.0};
-            // printf("AfterCreatingCircle:%d",(offset+(i*3)+2));
-        }
-        else{
-            positions[offset2+(i*3)] = top[i]; // Bottom left of triangle
-            positions[offset2+(i*3)+1] = top[i+1]; // Bottom right of triangle
-            positions[offset2+(i*3)+2] = (vec4){0.0,1.0,0.0,1.0}; // center of circle at the top
-        }
-        vertCount+=3;
-    }
+	// top
+	tex_coords[ (blockIndex * 36) + 12] = (vec2) {0.25, 0.25};
+	tex_coords[ (blockIndex * 36) + 13] = (vec2) {0.00, 0.00};
+	tex_coords[ (blockIndex * 36) + 14] = (vec2) {0.00, 0.25};
+	tex_coords[ (blockIndex * 36) + 15] = (vec2) {0.25, 0.25};
+	tex_coords[ (blockIndex * 36) + 16] = (vec2) {0.25, 0.00};
+	tex_coords[ (blockIndex * 36) + 17] = (vec2) {0.00, 0.00};
 
-    offset2 = vertCount;
-    for(int i = 0; i < 36; i++){
-        if(i==35){
-            positions[offset2+(i*3)+1] = bottom[i];
-            positions[offset2+(i*3)] = bottom[0];
-            positions[offset2+(i*3)+2] = (vec4){0.0,-1.0,0.0,1.0};
-            // printf("AfterCreatingCircle:%d",(offset+(i*3)+2));
-        }
-        else{
-            positions[offset2+(i*3)+1] = bottom[i]; // Bottom left of triangle
-            positions[offset2+(i*3)] = bottom[i+1]; // Bottom right of triangle
-            positions[offset2+(i*3)+2] = (vec4){0.0,-1.0,0.0,1.0}; // center of circle at the bottom
-        }
-        vertCount+=3;
-    }
+	// bottom
+	tex_coords[ (blockIndex * 36) + 18] = (vec2) {1.00, 1.00};
+	tex_coords[ (blockIndex * 36) + 19] = (vec2) {0.75, 0.75};
+	tex_coords[ (blockIndex * 36) + 20] = (vec2) {0.75, 1.00};
+	tex_coords[ (blockIndex * 36) + 21] = (vec2) {1.00, 1.00};
+	tex_coords[ (blockIndex * 36) + 22] = (vec2) {1.00, 0.75};
+	tex_coords[ (blockIndex * 36) + 23] = (vec2) {0.75, 0.75};
 
-    // printf("VertCountSphereEnd:%d\n",vertCount);
+	// back
+	tex_coords[ (blockIndex * 36) + 24] = (vec2) {0.75, 1.00};
+	tex_coords[ (blockIndex * 36) + 25] = (vec2) {0.50, 0.75};
+	tex_coords[ (blockIndex * 36) + 26] = (vec2) {0.50, 1.00};
+	tex_coords[ (blockIndex * 36) + 27] = (vec2) {0.75, 1.00};
+	tex_coords[ (blockIndex * 36) + 28] = (vec2) {0.75, 0.75};
+	tex_coords[ (blockIndex * 36) + 29] = (vec2) {0.50, 0.75};
+
+	// left
+	tex_coords[ (blockIndex * 36) + 30] = (vec2) {0.75, 1.00};
+	tex_coords[ (blockIndex * 36) + 31] = (vec2) {0.50, 0.75};
+	tex_coords[ (blockIndex * 36) + 32] = (vec2) {0.50, 1.00};
+	tex_coords[ (blockIndex * 36) + 33] = (vec2) {0.75, 1.00};
+	tex_coords[ (blockIndex * 36) + 34] = (vec2) {0.75, 0.75};
+	tex_coords[ (blockIndex * 36) + 35] = (vec2) {0.50, 0.75};
 }
 
-void drawDonut(vec4 * positions, int offset){ // Takes 7776 vertices
-    // printf("vertCountDonutStart:%d\n",vertCount);    
+void setTexture(int texture) {
+	// grass blocks are weird they need three separate textures, hard code that shit
+	// bamboo blocks are too but we are realistically never gonna use them so whatever
+	if (texture == T_GRASS) {
+		setGrass(blockIndex);
+		return;
+	}
 
-    vec4 *arr1 = (vec4 *) malloc(sizeof(vec4) * 36);
-    vec4 *arr2 = (vec4 *) malloc(sizeof(vec4) * 36);
+	float texX = 0;
+	float texY = 0;
+	switch (texture)
+	{
+	case T_GRAVEL:
+		texX = 0.25;
+		texY = 0.00;
+		break;
+	case T_COBBLE:
+		texX = 0.50;
+		texY = 0.00;
+		break;
+	case T_COBBLE_MOSSY:
+		texX = 0.75;
+		texY = 0.00;
+		break;
+	case T_STONE_BRICK:
+		texX = 0.00;
+		texY = 0.25;
+		break;
+	case T_STONE_BRICK_CRACKED:
+		texX = 0.25;
+		texY = 0.25;
+		break;
+	case T_STONE_BRICK_MOSSY:
+		texX = 0.50;
+		texY = 0.25;
+		break;
+	case T_BRICK:
+		texX = 0.75;
+		texY = 0.25;
+		break;
+	case T_GRANITE_POLISHED:
+		texX = 0.00;
+		texY = 0.50;
+		break;
+	case T_GRANITE_CRACKED:
+		texX = 0.25;
+		texY = 0.50;
+		break;
+	case T_SANDSTONE:
+		texX = 0.50;
+		texY = 0.50;
+		break;
+	case T_PLANK:
+		texX = 0.75;
+		texY = 0.50;
+		break;
+	case T_DIRT:
+		texX = 0.75;
+		texY = 0.75;
+		break;
+	
+	default:
+		break;
+	}
 
-    float numTriangles = num_vertices/3.0;
+	// front
+	tex_coords[ (blockIndex * 36) + 0] = (vec2) {texX + 0.25, texY + 0.25};
+	tex_coords[ (blockIndex * 36) + 1] = (vec2) {texX, texY};
+	tex_coords[ (blockIndex * 36) + 2] = (vec2) {texX, texY + 0.25};
+	tex_coords[ (blockIndex * 36) + 3] = (vec2) {texX + 0.25, texY + 0.25};
+	tex_coords[ (blockIndex * 36) + 4] = (vec2) {texX + 0.25, texY};
+	tex_coords[ (blockIndex * 36) + 5] = (vec2) {texX, texY};
 
-    arr1[0] = (vec4){0.25,0.0,0.0,1.0}; // Origin point (very first point of the sphere)
-    for(int i = 1; i < 36; i++){ // Rotate around to get one band of vertexes
-        arr1[i] = mvMult(rotateZ(-10),arr1[i-1]);
-    }
-    for(int i = 0; i < 36; i++){ // now translate the whole array over
-        arr1[i] = mvMult(translate(0.5,0.0,0.0),arr1[i]);
-    }
+	// right
+	tex_coords[ (blockIndex * 36) + 6] = (vec2) {texX + 0.25, texY + 0.25};
+	tex_coords[ (blockIndex * 36) + 7] = (vec2) {texX, texY};
+	tex_coords[ (blockIndex * 36) + 8] = (vec2) {texX, texY + 0.25};
+	tex_coords[ (blockIndex * 36) + 9] = (vec2) {texX + 0.25, texY + 0.25};
+	tex_coords[ (blockIndex * 36) + 10] = (vec2) {texX + 0.25, texY};
+	tex_coords[ (blockIndex * 36) + 11] = (vec2) {texX, texY};
 
-    for(int i = 0; i < 36; i++){ // Now makes a second array to rotate 10 degrees from where the first points are created
-        arr2[i] = mvMult(rotateY(10),arr1[i]);
-    }
+	// top
+	tex_coords[ (blockIndex * 36) + 12] = (vec2) {texX + 0.25, texY + 0.25};
+	tex_coords[ (blockIndex * 36) + 13] = (vec2) {texX, texY};
+	tex_coords[ (blockIndex * 36) + 14] = (vec2) {texX, texY + 0.25};
+	tex_coords[ (blockIndex * 36) + 15] = (vec2) {texX + 0.25, texY + 0.25};
+	tex_coords[ (blockIndex * 36) + 16] = (vec2) {texX + 0.25, texY};
+	tex_coords[ (blockIndex * 36) + 17] = (vec2) {texX, texY};
 
-    // Connect the 2 arrays together to create the first band
-    for(int i = 0; i < 36; i++){
-        if(i==35){
-            positions[i*6+offset] = arr1[i]; // Bottom left
-            positions[(i*6)+2+offset] = arr2[i]; // Bottom right
-            positions[(i*6)+1+offset] = arr1[0]; // Top left
-            positions[(i*6)+3+offset] = arr2[i]; // bottom right
-            positions[(i*6)+4+offset] = arr1[0]; // top left
-            positions[(i*6)+5+offset] = arr2[0]; // Top right
-            // double finalPos = (i*6)+5;
-            // printf("Final position in the posArr = %f",finalPos);
-        }
-        else{
-            positions[i*6+offset] = arr1[i]; // Bottom left
-            positions[(i*6)+2+offset] = arr2[i]; // Bottom right
-            positions[(i*6)+1+offset] = arr1[i+1]; // Top left
-            positions[(i*6)+3+offset] = arr2[i]; // bottom right of square
-            positions[(i*6)+4+offset] = arr1[i+1]; // top left of square
-            positions[(i*6)+5+offset] = arr2[i+1]; // top right of square
-        }
-        vertCount+=6;
-        
-    }
-    
-    // Now rotate the whole entire band 360 degrees around to get a full donut
-    for(int i = 1; i < 36; i++){
+	// bottom
+	tex_coords[ (blockIndex * 36) + 18] = (vec2) {texX + 0.25, texY + 0.25};
+	tex_coords[ (blockIndex * 36) + 19] = (vec2) {texX, texY};
+	tex_coords[ (blockIndex * 36) + 20] = (vec2) {texX, texY + 0.25};
+	tex_coords[ (blockIndex * 36) + 21] = (vec2) {texX + 0.25, texY + 0.25};
+	tex_coords[ (blockIndex * 36) + 22] = (vec2) {texX + 0.25, texY};
+	tex_coords[ (blockIndex * 36) + 23] = (vec2) {texX, texY};
 
-        for(int n = 0; n < 36; n++){
-            positions[(216*i)+ (n*6)+offset] = mvMult(rotateY(10),positions[(216*(i-1)) + (n*6)+offset]);
-            positions[(216*i)+ (n*6)+1+offset] = mvMult(rotateY(10),positions[(216*(i-1)) + (n*6) +1+offset]);
-            positions[(216*i)+ (n*6)+2+offset] = mvMult(rotateY(10),positions[(216*(i-1)) + (n*6) +2+offset]);
-            positions[(216*i)+ (n*6)+3+offset] = mvMult(rotateY(10),positions[(216*(i-1)) + (n*6) +3+offset]);
-            positions[(216*i)+ (n*6)+4+offset] = mvMult(rotateY(10),positions[(216*(i-1)) + (n*6) +4+offset]);
-            positions[(216*i)+ (n*6)+5+offset] = mvMult(rotateY(10),positions[(216*(i-1)) + (n*6) +5+offset]);
-            vertCount+=6;
-        }
-    }
-    // printf("vertCountDonutEnd:%d\n",vertCount);
+	// back
+	tex_coords[ (blockIndex * 36) + 24] = (vec2) {texX + 0.25, texY + 0.25};
+	tex_coords[ (blockIndex * 36) + 25] = (vec2) {texX, texY};
+	tex_coords[ (blockIndex * 36) + 26] = (vec2) {texX, texY + 0.25};
+	tex_coords[ (blockIndex * 36) + 27] = (vec2) {texX + 0.25, texY + 0.25};
+	tex_coords[ (blockIndex * 36) + 28] = (vec2) {texX + 0.25, texY};
+	tex_coords[ (blockIndex * 36) + 29] = (vec2) {texX, texY};
+
+	// left
+	tex_coords[ (blockIndex * 36) + 30] = (vec2) {texX + 0.25, texY + 0.25};
+	tex_coords[ (blockIndex * 36) + 31] = (vec2) {texX, texY};
+	tex_coords[ (blockIndex * 36) + 32] = (vec2) {texX, texY + 0.25};
+	tex_coords[ (blockIndex * 36) + 33] = (vec2) {texX + 0.25, texY + 0.25};
+	tex_coords[ (blockIndex * 36) + 34] = (vec2) {texX + 0.25, texY};
+	tex_coords[ (blockIndex * 36) + 35] = (vec2) {texX, texY};
 }
 
-void drawTaurus(vec4* positions, int offset){ // Takes about 39096 vertices
+// To make this behave like WORLD x,y,z coordinates, swap the y and z coordinates when you call this!
+void placeBlock(int blockX, int blockY, int blockZ, int texture) {
+	// front
+	positions[ (blockIndex * 36) + 0 ] = (vec4) { blockX + (0.5), blockY + (-0.5),  blockZ + (0.5),  1.0};
+	positions[ (blockIndex * 36) + 1 ] = (vec4) { blockX + (-0.5), blockY + (0.5),  blockZ + (0.5),  1.0};
+	positions[ (blockIndex * 36) + 2 ] = (vec4) { blockX + (-0.5), blockY + (-0.5),  blockZ + (0.5),  1.0};
+	positions[ (blockIndex * 36) + 3 ] = (vec4) { blockX + (0.5), blockY + (-0.5),  blockZ + (0.5),  1.0};
+	positions[ (blockIndex * 36) + 4 ] = (vec4) { blockX + (0.5), blockY + (0.5),  blockZ + (0.5),  1.0};
+	positions[ (blockIndex * 36) + 5 ] = (vec4) { blockX + (-0.5), blockY + (0.5),  blockZ + (0.5),  1.0};
+	// right
+	positions[ (blockIndex * 36) + 6 ] = (vec4)  {  blockX + (0.5), blockY + (-0.5), blockZ + (-0.5),  1.0};
+	positions[ (blockIndex * 36) + 7 ] = (vec4)  {  blockX + (0.5), blockY + (0.5), blockZ + (0.5),  1.0};
+	positions[ (blockIndex * 36) + 8 ] = (vec4)  {  blockX + (0.5), blockY + (-0.5), blockZ + (0.5),  1.0};
+	positions[ (blockIndex * 36) + 9 ] = (vec4)  {  blockX + (0.5), blockY + (-0.5), blockZ + (-0.5),  1.0};
+	positions[ (blockIndex * 36) + 10 ] = (vec4) {  blockX + (0.5), blockY + (0.5), blockZ + (-0.5),  1.0};
+	positions[ (blockIndex * 36) + 11 ] = (vec4) {  blockX + (0.5), blockY + (0.5), blockZ + (0.5),  1.0};
 
-    // printf("vertCountTaurusStart:%d\n",vertCount);
+	// top
+	positions[ (blockIndex * 36) + 12 ] = (vec4) {  blockX + (0.5), blockY + (0.5), blockZ + (0.5),  1.0};
+	positions[ (blockIndex * 36) + 13 ] = (vec4) {  blockX + (-0.5), blockY + (0.5), blockZ + (-0.5),  1.0};
+	positions[ (blockIndex * 36) + 14 ] = (vec4) {  blockX + (-0.5), blockY + (0.5), blockZ + (0.5),  1.0};
+	positions[ (blockIndex * 36) + 15 ] = (vec4) {  blockX + (0.5), blockY + (0.5), blockZ + (0.5),  1.0};
+	positions[ (blockIndex * 36) + 16 ] = (vec4) {  blockX + (0.5), blockY + (0.5), blockZ + (-0.5),  1.0};
+	positions[ (blockIndex * 36) + 17 ] = (vec4) {  blockX + (-0.5), blockY + (0.5), blockZ + (-0.5),  1.0};	
 
-    vec4 *arr1 = (vec4 *) malloc(sizeof(vec4) * 36);
-    vec4 *arr2 = (vec4 *) malloc(sizeof(vec4) * 36);
+	// bottom
+	positions[ (blockIndex * 36) + 18 ] = (vec4) {  blockX + (0.5), blockY + (-0.5), blockZ + (-0.5),  1.0};
+	positions[ (blockIndex * 36) + 19 ] = (vec4) {  blockX + (-0.5), blockY + (-0.5), blockZ + (0.5),  1.0};
+	positions[ (blockIndex * 36) + 20 ] = (vec4) {  blockX + (-0.5), blockY + (-0.5), blockZ + (-0.5),  1.0};
+	positions[ (blockIndex * 36) + 21 ] = (vec4) {  blockX + (0.5), blockY + (-0.5), blockZ + (-0.5),  1.0};
+	positions[ (blockIndex * 36) + 22 ] = (vec4) {  blockX + (0.5), blockY + (-0.5), blockZ + (0.5),  1.0};
+	positions[ (blockIndex * 36) + 23 ] = (vec4) {  blockX + (-0.5), blockY + (-0.5), blockZ + (0.5),  1.0};
 
-    float numTriangles = num_vertices/3.0;
+	// back
+	positions[ (blockIndex * 36) + 24 ] = (vec4) { blockX + (-0.5), blockY + (-0.5), blockZ + (-0.5), 1.0};
+	positions[ (blockIndex * 36) + 25 ] = (vec4) { blockX + (0.5), blockY + (0.5), blockZ + (-0.5), 1.0};
+	positions[ (blockIndex * 36) + 26 ] = (vec4) { blockX + (0.5), blockY + (-0.5), blockZ + (-0.5), 1.0};
+	positions[ (blockIndex * 36) + 27 ] = (vec4) { blockX + (-0.5), blockY + (-0.5), blockZ + (-0.5), 1.0};
+	positions[ (blockIndex * 36) + 28 ] = (vec4) { blockX + (-0.5), blockY + (0.5), blockZ + (-0.5), 1.0};
+	positions[ (blockIndex * 36) + 29 ] = (vec4) { blockX + (0.5), blockY + (0.5), blockZ + (-0.5), 1.0};
 
-    arr1[0] = (vec4){0.25,0.0,0.0,1.0}; // Origin point (very first point of the sphere)
-    for(int i = 1; i < 36; i++){ // Rotate around to get one band of vertexes
-        arr1[i] = mvMult(rotateZ(-10),arr1[i-1]);
-    }
-    for(int i = 0; i < 36; i++){ // now translate the whole array over
-        arr1[i] = mvMult(translate(0.5,-0.8,0.0),arr1[i]);
-    }
+	// left
+	positions[ (blockIndex * 36) + 30 ] = (vec4) {  blockX + (-0.5), blockY + (-0.5), blockZ + (0.5), 1.0};
+	positions[ (blockIndex * 36) + 31 ] = (vec4) {  blockX + (-0.5), blockY + (0.5), blockZ + (-0.5), 1.0};
+	positions[ (blockIndex * 36) + 32 ] = (vec4) {  blockX + (-0.5), blockY + (-0.5), blockZ + (-0.5), 1.0};
+	positions[ (blockIndex * 36) + 33 ] = (vec4) {  blockX + (-0.5), blockY + (-0.5), blockZ + (0.5), 1.0};
+	positions[ (blockIndex * 36) + 34 ] = (vec4) {  blockX + (-0.5), blockY + (0.5), blockZ + (0.5), 1.0};
+	positions[ (blockIndex * 36) + 35 ] = (vec4) {  blockX + (-0.5), blockY + (0.5), blockZ + (-0.5), 1.0};
 
-    for(int i = 0; i < 36; i++){ // Now makes a second array to rotate 10 degrees from where the first points are created, but also cause it to translate up about 0.1 each time
-        arr2[i] = mvMult(rotateY(10),arr1[i]);
-        arr2[i] = mvMult(translate(0.0,0.0165,0.0),arr2[i]);
-    }
+	setTexture(texture);
 
-    // Connect the 2 arrays together to create the first band
-    for(int i = 0; i < 36; i++){
-        if(i==35){
-            positions[i*6+offset] = arr1[i]; // Bottom left
-            positions[(i*6)+2+offset] = arr2[i]; // Bottom right
-            positions[(i*6)+1+offset] = arr1[0]; // Top left
-            positions[(i*6)+3+offset] = arr2[i]; // bottom right
-            positions[(i*6)+4+offset] = arr1[0]; // top left
-            positions[(i*6)+5+offset] = arr2[0]; // Top right
-        }
-        else{
-            positions[i*6+offset] = arr1[i]; // Bottom left
-            positions[(i*6)+2+offset] = arr2[i]; // Bottom right
-            positions[(i*6)+1+offset] = arr1[i+1]; // Top left
-            positions[(i*6)+3+offset] = arr2[i]; // bottom right of square
-            positions[(i*6)+4+offset] = arr1[i+1]; // top left of square
-            positions[(i*6)+5+offset] = arr2[i+1]; // top right of square
-        }
-        vertCount+=6;
-        
-    }
-    
-    // Now rotate the whole entire band 360 degrees around to get a full donut
-    for(int i = 1; i < 36*5; i++){
-
-        for(int n = 0; n < 36; n++){
-            // Rotates the band once by 10 degrees
-            positions[(216*i)+ (n*6)+offset] = mvMult(rotateY(10),positions[(216*(i-1)) + (n*6)+offset]);
-            positions[(216*i)+ (n*6)+1+offset] = mvMult(rotateY(10),positions[(216*(i-1)) + (n*6) +1+offset]);
-            positions[(216*i)+ (n*6)+2+offset] = mvMult(rotateY(10),positions[(216*(i-1)) + (n*6) +2+offset]);
-            positions[(216*i)+ (n*6)+3+offset] = mvMult(rotateY(10),positions[(216*(i-1)) + (n*6) +3+offset]);
-            positions[(216*i)+ (n*6)+4+offset] = mvMult(rotateY(10),positions[(216*(i-1)) + (n*6) +4+offset]);
-            positions[(216*i)+ (n*6)+5+offset] = mvMult(rotateY(10),positions[(216*(i-1)) + (n*6) +5+offset]);
-
-            vertCount+=6;
-            // Then translate it up by 0.0165
-            positions[(216*i)+ (n*6)+offset] = mvMult(translate(0.0,0.0165,0.0),positions[(216*i)+ (n*6)+offset]);
-            positions[(216*i)+ (n*6)+1+offset] = mvMult(translate(0.0,0.0165,0.0),positions[(216*i)+ (n*6)+1+offset]);
-            positions[(216*i)+ (n*6)+2+offset] = mvMult(translate(0.0,0.0165,0.0),positions[(216*i)+ (n*6)+2+offset]);
-            positions[(216*i)+ (n*6)+3+offset] = mvMult(translate(0.0,0.0165,0.0),positions[(216*i)+ (n*6)+3+offset]);
-            positions[(216*i)+ (n*6)+4+offset] = mvMult(translate(0.0,0.0165,0.0),positions[(216*i)+ (n*6)+4+offset]);
-            positions[(216*i)+ (n*6)+5+offset] = mvMult(translate(0.0,0.0165,0.0),positions[(216*i)+ (n*6)+5+offset]);
-            // if(n==35 & i==36*4){
-                // double finalPos = (216*i)+(n*6)+5;
-                // printf("n is 35 and i is 4Finalpos:%f\n",finalPos);
-                // printVec(positions[(216*i)+(n*6)]);
-                // printVec(positions[0]);
-            // }
-            // if(n==36 & i==36*5){
-            //     double finalPos = (216*i)+(n*6)+5;
-                // printf("n is 36 ad i is 5Finalpos:%f\n",finalPos);
-            // }
-            // if(n==35 & i==36*5){
-            //     double finalPos = (216*i)+(n*6)+5;
-                // printf("Finalpos:%f\n",finalPos);
-            // }
-        }
-    }
-
-    // printf("Count:%d\n",count); 
-
-    // Now add the circles to fill in the ends of each side
-    int offset2 = vertCount; // Found this by printing the very last point
-    for(int i = 0; i < 36; i++){
-        if(i==35){
-            positions[offset2+(i*3)+1] = arr1[i];
-            positions[offset2+(i*3)] = arr1[0];
-            positions[offset2+(i*3)+2] = (vec4){0.5,-0.8,0.0,1.0};
-            // printf("AfterCreatingCircle:%d",(offset+(i*3)+2));
-        }
-        else{
-            positions[offset2+(i*3)+1] = arr1[i]; // Top right of triangle
-            positions[offset2+(i*3)] = arr1[i+1]; // Top left of triangle
-            positions[offset2+(i*3)+2] = (vec4){0.5,-0.8,0.0,1.0}; // center of circle
-        }
-        vertCount+=3;
-    }
-
-    // Update the offset2
-    offset2 = vertCount;
-
-    // Move the points from the first circle up to the top of the spring/taurs
-    for(int i = 0; i<36; i++){
-        arr1[i] = mvMult(translate(0.0,2.975,0.0),arr1[i]);
-    }
-
-    // Draw the second circle
-    for(int i = 0; i < 36; i++){
-        if(i==35){
-            positions[offset2+(i*3)] = arr1[i];
-            positions[offset2+(i*3)+1] = arr1[0];
-            // positions[offset+(i*3)+2] = (vec4){0.5,2.2134,0.0,1.0};
-            positions[offset2+(i*3)+2] = (vec4){0.5,2.15,0.0,1.0};
-            // printf("AfterCreatingCircle:%d",(offset+(i*3)+2));
-        }
-        else{
-            positions[offset2+(i*3)] = arr1[i]; // Top right of triangle
-            positions[offset2+(i*3)+1] = arr1[i+1]; // Top left of triangle
-            positions[offset2+(i*3)+2] = (vec4){0.5,2.15,0.0,1.0}; // center of circle
-        }
-        vertCount+=3;
-    }
-
-    // Translate and scale the spring/taurus down
-    for(int i = offset; i < vertCount; i++){
-        positions[i] = mvMult(matMult(translate(0.0,-0.35,0.0),scale(0.5,0.5,0.5)),positions[i]);
-    }
-
-    // printf("vertCountTaurusEnd:%d\n",vertCount);
-
-}
-
-// Generates a shape from file inputs
-void fileGenerate(vec4 *positions){
-
-    float xSum = 0.0, ySum = 0.0, zSum = 0.0; 
-
-    GLboolean overOne = true;
-
-    for(int i = 0; i < num_vertices; i++){ // Read in each file line and then create a vec4 for each line
-        char* fileLine = (char*)malloc(100*sizeof(char));
-        fgets(fileLine,  100, fptr);
-
-        // After getting the fileLine now somehow split it up by the , and then parse into floats using atof()
-        float x,y,z,w;
-        sscanf(fileLine, "%f,%f,%f,%f", &x,&y,&z,&w); // Splits the line up by commas and then stores the floats
-        // printf("Filelines:%f,%f,%f,%f\n", x,y,z,w);
-        if(i==0 && abs(x) <= 1 && overOne){
-            overOne = false;
-        }
-
-        
-        // Divide by 100 to fit in the canonical view (1x1)
-        if(overOne){
-            x = x/100.0;
-            y = y/100.0;
-            z = z/100.0;
-        }
-
-        xSum+=x;
-        ySum+=y;
-        zSum+=z;
-
-        positions[i] = (vec4){x,y,z,w}; // Create a vector with the float values
-        // printVec(positions[i]);
-
-    }
-
-    // Averages the x, y, z values and then just moves those towards back to the origin
-    float xAvg = xSum/num_vertices;
-    float yAvg = ySum/num_vertices;
-    float zAvg = zSum/num_vertices;
-
-    for(int i = 0; i < num_vertices; i++){
-        positions[i] = mvMult(translate(-xAvg, -yAvg, -zAvg), positions[i]);
-    }
-
+	blockIndex++;
 }
 
 void init(void)
-{
-    
+{   
+    srand(time(NULL)); // Sets the random seed for RNG
+
+    // Calculate the total number of blocks (maze blocks + pyramid blocks)
+    int num_blocks = ((mazeSizeX * 2 + 1) * (mazeSizeY * 2 + 1) * 3) + ((mazeSizeX * 3 + 2) * (mazeSizeY * 3 + 2) * (mazeSizeX / 2));
+    num_vertices = 36 * num_blocks;
+
+    // Allocate memory for blocks and texture coordinates
+    positions = (vec4 *) malloc(sizeof(vec4) * num_vertices);
+    tex_coords = (vec2 *) malloc(sizeof(vec2) * num_vertices);
+
+    // MAZE GENERATION
+    int x_offset = (mazeSizeX * 2 + 1) / 2;
+    int y_offset = (mazeSizeY * 2 + 1) / 2;
+
+    // Generate maze blocks (walls, corners, and paths)
+    for (int y = 0; y < (2 * mazeSizeY) + 1; y++) {
+        for (int x = 0; x < (2 * mazeSizeX) + 1; x++) {
+            for (int z = 0; z < 3; z++) {  // Looping for maze height
+
+                // Randomly skip some blocks for realism based on the layer
+                if (z == 1 && randInRange(1, 100) < 5) {  // 5% chance to skip layer 2
+                    continue;
+                } else if (z == 2 && randInRange(1, 100) < 25) {  // 25% chance to skip layer 3
+                    continue;
+                }
+
+                int cell = maze[y][x];  // Get current cell type
+                if (cell == BLANK_CELL) {
+                    // Blank cell - do nothing
+                } else if (cell == CORNER_CELL) {
+                    placeBlock(x - x_offset, z, y - y_offset, randInRange(4, 6));  // Place corner block
+                } else if (cell == WALL_CELL) {
+                    placeBlock(x - x_offset, z, y - y_offset, randInRange(2, 3));  // Place wall block
+                }
+            }
+        }
+    }
+
+    // ISLAND GENERATION (Upside-Down Pyramid Beneath the Maze)
+    int baseSizeX = mazeSizeX * 2 + 5;
+    int baseSizeY = mazeSizeY * 2 + 5;
+    int height = baseSizeX > baseSizeY ? baseSizeY / 2 : baseSizeX / 2;
+
+    for (int layer = 0; layer < height; layer++) {
+        int currentSizeX = baseSizeX - 2 * layer;
+        int currentSizeY = baseSizeY - 2 * layer;
+
+        // Loop through each layer of the pyramid
+        for (int y = 0; y < currentSizeY; y++) {
+            for (int x = 0; x < currentSizeX; x++) {
+                // Calculate block position
+                int blockX = x - currentSizeX / 2;
+                int blockY = y - currentSizeY / 2;
+                int blockZ = -(layer + 1);  // Z-coordinate for downward layers
+
+                // Randomly skip blocks for realism (50% chance for non-top layers)
+                if (layer > 0 && randInRange(1, 100) < 50) {
+                    continue;  // Skip this block 50% of the time
+                }
+
+				if (randInRange(1, 100) < 50) {  // 20% chance to add a block
+                // Apply texture: grass for top layer, dirt for others
+                int texture = (layer == 0) ? T_GRASS : T_DIRT;
+
+                // Place an extra block for realism (i.e., add an additional block)
+                placeBlock(blockX, blockZ, blockY, texture);
+            	}
+
+                // Apply texture: grass for top layer, dirt for others
+                int texture = (layer == 0) ? T_GRASS : T_DIRT;
+
+                // Place the block in the scene
+                placeBlock(blockX, blockZ, blockY, texture);
+            }
+        }
+    }
+
+    // Texture loading and OpenGL setup
     GLuint program = initShader("vshader.glsl", "fshader.glsl");
     glUseProgram(program);
 
-    srand(time(0)); // Sets the random seed for RNG
-
-    vec4 *positions = (vec4 *) malloc(sizeof(vec4) * num_vertices); 
-
-    float numTriangles = num_vertices/3.0;
-
-    if(cpGenerate){
-        drawSphere(positions,sphereOffset);
-        donutOffset = vertCount;
-        drawDonut(positions,donutOffset);
-        taurusOffset = vertCount;
-        drawTaurus(positions,taurusOffset); 
+    GLuint mytex[1];
+    glGenTextures(1, mytex);
+    glBindTexture(GL_TEXTURE_2D, mytex[0]);
+    GLubyte my_texels[64][64][3];  // Texture size (64x64)
+    FILE *fp = fopen("textures02.raw", "r");
+    if (fp != NULL) {
+        printf("[textureTemplate] Successfully opened texture file.\n");
+        fread(my_texels, 64 * 64 * 3, 1, fp);
+        fclose(fp);
     }
-    else{
-        fileGenerate(positions);
-    }    
 
-    vec4 *colors = (vec4 *) malloc(sizeof(vec4) * num_vertices); // TODO: Change the number of colors
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, 64, 64, 0, GL_RGB, GL_UNSIGNED_BYTE, my_texels);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
 
-    // For loop to get the colors for each triangle
-    for(int i = 0; i < numTriangles; i++){
-        // Generates a random value for RGB
-        float red = (float) rand() / RAND_MAX;
-        float green = (float) rand() / RAND_MAX;
-        float blue = (float) rand() / RAND_MAX;
-
-        // Save the colors for the one triangle
-        colors[i*3] = (vec4) {red, green, blue, 1.0};
-        colors[(i*3)+1] = (vec4) {red, green, blue, 1.0};
-        colors[(i*3)+2] = (vec4) {red, green, blue, 1.0};
-    }
-    
+    // Vertex buffer setup
     GLuint vao;
     glGenVertexArrays(1, &vao);
     glBindVertexArray(vao);
-
+    
     GLuint buffer;
     glGenBuffers(1, &buffer);
     glBindBuffer(GL_ARRAY_BUFFER, buffer);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(vec4) * num_vertices + sizeof(vec4) * num_vertices, NULL, GL_STATIC_DRAW); // TODO: Might need to change amount of buffer data, should be amount of vertices and colors
-    glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(vec4) * num_vertices, positions); // TODO: Starts at index 0 and should be all the position vectors
-    glBufferSubData(GL_ARRAY_BUFFER, sizeof(vec4) * num_vertices, sizeof(vec4) * num_vertices, colors); // TODO: Starts after all the position vectors and contains all the color vectors
+    glBufferData(GL_ARRAY_BUFFER, sizeof(vec4) * num_vertices + sizeof(vec2) * num_vertices, NULL, GL_STATIC_DRAW);
+    glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(vec4) * num_vertices, positions);
+    glBufferSubData(GL_ARRAY_BUFFER, sizeof(vec4) * num_vertices, sizeof(vec2) * num_vertices, tex_coords);
 
-    // Goes through and does all the vertex positions
+    // Vertex attribute pointers
     GLuint vPosition = glGetAttribLocation(program, "vPosition");
     glEnableVertexAttribArray(vPosition);
-    glVertexAttribPointer(vPosition, 4, GL_FLOAT, GL_FALSE, 0, (GLvoid *) (0));
+    glVertexAttribPointer(vPosition, 4, GL_FLOAT, GL_FALSE, 0, (GLvoid *)(0));
 
+    GLuint vTexCoord = glGetAttribLocation(program, "vTexCoord");
+    glEnableVertexAttribArray(vTexCoord);
+    glVertexAttribPointer(vTexCoord, 2, GL_FLOAT, GL_FALSE, 0, (GLvoid *)(sizeof(vec4) * num_vertices));
+
+    // Set up uniforms
     ctm_location = glGetUniformLocation(program, "ctm");
+    model_view_location = glGetUniformLocation(program, "model_view");
+    projection_location = glGetUniformLocation(program, "projection");
 
-    // Goes through and does all the vector colors
-    GLuint vColor = glGetAttribLocation(program, "vColor");
-    glEnableVertexAttribArray(vColor);
-    glVertexAttribPointer(vColor, 4, GL_FLOAT, GL_FALSE, 0, (GLvoid *) (sizeof(vec4) * num_vertices)); // TODO: change # of vecs
+    GLuint texture_location = glGetUniformLocation(program, "texture");
+    glUniform1i(texture_location, 0);
 
-    // Goes through and checks the depth of the objects and sets the background
+    // OpenGL setup for depth and background color
+    glEnable(GL_CULL_FACE);
     glEnable(GL_DEPTH_TEST);
-    glClearColor(0.0, 0.0, 0.0, 1.0); // Pretty sure this is the background color
-    glDepthRange(1,0);
+    glClearColor(0.0, 0.0, 0.0, 1.0);  // Background color
+    glDepthRange(1, 0);  // Depth testing
 }
+
+
 
 void display(void)
 {
@@ -477,24 +439,8 @@ void display(void)
     glPolygonMode(GL_BACK, GL_LINE); // The back of the object is only an outline
 
     glUniformMatrix4fv(ctm_location, 1, GL_FALSE, (float*) &current_transformation_matrix); //TODO: Mouse added things
-
-    // TODO: Possibly just read in all shapes and then just calculate the offsets between all the computer generated shapes
     
-    if(cpGenerate){
-        if(cpGenerate && shapeToDisplay == 0){
-            glDrawArrays(GL_TRIANGLES, sphereOffset, 3672);
-        }
-        if(cpGenerate && shapeToDisplay == 1){
-            glDrawArrays(GL_TRIANGLES, donutOffset, 7776);
-        }
-        if(cpGenerate && shapeToDisplay == 2){
-            glDrawArrays(GL_TRIANGLES, taurusOffset, 39096);
-        } 
-    }else{
-        glDrawArrays(GL_TRIANGLES, 0, num_vertices);
-    }
-    
-    // glDrawArrays(GL_TRIANGLES, 0, num_vertices); // Draw triangles starting at the beginning index which is 0
+    glDrawArrays(GL_TRIANGLES, 0, num_vertices); // Draw triangles starting at the beginning index which is 0
 
     glutSwapBuffers();
 }
@@ -507,14 +453,14 @@ void mouse(int button, int state, int x, int y)
         prevZ = sqrt(1-(prevX*prevX) - (prevY * prevY));
     }
     
-    if(button == 3){ // Scroll wheel up
-        mat4 scale_matrix = scale(1.02,1.02,1.02);
-        current_transformation_matrix = matMult(scale_matrix, current_transformation_matrix);
-    }
-    if(button == 4){ // Scroll wheel down
-        mat4 scale_matrix = scale(1/1.02,1/1.02,1/1.02);
-        current_transformation_matrix = matMult(scale_matrix, current_transformation_matrix);
-    }
+    // if(button == 3){ // Scroll wheel up
+    //     mat4 scale_matrix = scale(1.02,1.02,1.02);
+    //     current_transformation_matrix = matMult(scale_matrix, current_transformation_matrix);
+    // }
+    // if(button == 4){ // Scroll wheel down
+    //     mat4 scale_matrix = scale(1/1.02,1/1.02,1/1.02);
+    //     current_transformation_matrix = matMult(scale_matrix, current_transformation_matrix);
+    // }
     glutPostRedisplay();
 }
 
@@ -533,13 +479,12 @@ void motion(int x, int y){ //TODO: Edit this to rotate the pyramid, add a rotate
     // uses dot product to get angle between the vectors, then normalizes it 
     float theta = (180/M_PI) *acos(dotProduct(newVec, origVec)/(magOfVec(newVec)*magOfVec(origVec)));
 
-    //if theta is NaN then the acos calculated incorrectly
+    // if theta is NaN then the acos calculated incorrectly
     if(!isnan(theta)){
-        //process of deriving the rotation matrix
-        //used example in the "Geometric Objects and Transformations 05" slides as reference
+        // process of deriving the rotation matrix
+        // used example in the "Geometric Objects and Transformations 05" slides as reference
 
-        //calculate the about vector
-        //Then normalize it  
+        // calculate the about vector hen normalize it  
         vec4 aboutVec = crossProduct(origVec,newVec);
         float magOfAbout = magOfVec(aboutVec);
         aboutVec = (vec4){aboutVec.x/magOfAbout, aboutVec.y/magOfAbout, aboutVec.z/magOfAbout, 0};
@@ -587,67 +532,80 @@ void keyboard(unsigned char key, int mousex, int mousey)
 {
 
     // Causes the program to terminate if the user presses q
-    if(key == 'q')
+    if(key == 'q') {
+		#ifndef __APPLE__
     	glutLeaveMainLoop();
-
-    if(cpGenerate && key == '1'){ // Sphere
-        shapeToDisplay = 0;
-        glutPostRedisplay();
-    }
-    if(cpGenerate && key == '2'){ // Donut
-        shapeToDisplay = 1;
-        glutPostRedisplay();
-    }
-    if(cpGenerate && key == '3'){ // Taurus
-        shapeToDisplay = 2;
-        glutPostRedisplay();
+	#else
+		exit(0);
+	#endif
+	} else if(key == 'i'){ // Scroll wheel up - ALSO ADDING KEY 'i' BECAUSE MACOS SUCKS
+        mat4 scale_matrix = scale(1.02,1.02,1.02);
+        current_transformation_matrix = matMult(scale_matrix, current_transformation_matrix);
+    } else if(key == 'o'){ // Scroll wheel down - ALSO ADDING KEY 'O' BECAUSE MACOS SUCKS
+        mat4 scale_matrix = scale(1/1.02,1/1.02,1/1.02);
+        current_transformation_matrix = matMult(scale_matrix, current_transformation_matrix);
     }
 
     // glutPostRedisplay();
 }
 
+void idle(void){
+	// if(is_animating){
+	// 	if(step_counter == num_step) {
+	// 		triangle_position = target_position;
+	// 		ctm = translate(target-position.x, target_position.y, target_position.z);
+	// 		is_animating = 0;
+	// 	}
+	// 	else{
+	// 		// vec4 move_vector = v4v4_subtraction(target_position, triangle_position);
+	// 		// vec4 delta = sv4_multiplication(float step_counter / num_steps, move_vector);
+	// 		// vec4 temp_position = v4v4_addition(traingle_position, delta);
+	// 		// ctm = translate(temp_position.x, temp_position.y, temp_position.z);
+	// 		step_counter++; 
+	// 	}
+	// 	glutPostRedisplay;
+	// }
+}
+
 int main(int argc, char **argv)
 {
+	// default size will be overridden if correct args are provided
+	mazeSizeX = 10;
+	mazeSizeY = 10;
+	if (argc == 3) {	// args are in the format of ./programName X Y
+		mazeSizeX = atoi(argv[1]);
+		mazeSizeY = atoi(argv[2]);	
+	}
 
-    //TODO: Ask user if they want computer programmed shapes or to read in a file input
-    int num;
-    printf("Enter 1 for computer generated shapes, or enter 2 to enter a filename: \n");
-    scanf("%d", &num);
+	maze = getMaze(mazeSizeX, mazeSizeY);
 
-    if(num == 2){ // Read in the user input for the filename
-        cpGenerate = false;
-        printf("Please enter the filename: \n");
-        char* fileName = (char*)malloc(100*sizeof(char));
-        scanf("%s", fileName);
-        fptr = fopen(fileName, "r");
-        if(fptr == NULL){ // If pointer invalid then file could not open so close and exit program
-            printf("Invalid filename or just could not open %s\n", fileName);
-            free(fileName);
-            return 1;
-        }
-        else{ // Else read in the first line to set the num_vertices then continue as normal for now
-            char* inputSize = (char*)malloc(100*sizeof(char));
-            fgets(inputSize, 100, fptr);
-            num_vertices = atoi(inputSize);
-            // printf("num_vertices:%d\n",num_vertices);
-            // return 0;
-        }
-    }
-    else{
-        printf("Controls: Press 1 to see sphere, 2 for donut, 3 for taurus, Q to exit\n");
-    }
+	printMaze();
+
+    printf("\n------------------------------------ Break Between Mazes ------------------------------------\n\n");
+
+    // Add solve maze function that returns a maze as well, and another one that returns a 2d int array
+    printSolution();
+
+    // printf("\n------------------------------------ Break Between Mazes ------------------------------------\n\n");
+
+    // solveMaze(0);
+    // printSolution();    
+	
 
     glutInit(&argc, argv);
     glutInitDisplayMode(GLUT_RGBA | GLUT_DOUBLE | GLUT_DEPTH);
     glutInitWindowSize(512, 512); // Creates a 512x512 pixel window
     glutInitWindowPosition(100,100); // Makes the window first appear 100 pixels down and to the right of the top left corner of screen
-    glutCreateWindow("Triangle");
+    glutCreateWindow("Project 2/3 - Minecraft Maze");
+#ifndef __APPLE__
     glewInit();
-    init();
+#endif
+	init();
     glutDisplayFunc(display); 
     glutKeyboardFunc(keyboard); // Checks for any keyboard inputs
     glutMouseFunc(mouse); // Checks for the mouse
     glutMotionFunc(motion);
+	glutIdleFunc(idle);
     glutMainLoop(); // Makes the whole main function wait so the program does not terminate
 
     return 0;
