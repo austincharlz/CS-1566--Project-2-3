@@ -37,21 +37,53 @@ float prevX=512, prevY=512, prevZ=512;
 GLboolean cpGenerate = true;
 
 GLuint ctm_location;
+// GLuint sun_ctm_location;
 GLuint model_view_location;
 GLuint projection_location;
 
 int mazeSizeX, mazeSizeY;
 int num_vertices = 0; // CALCULATE NUMBER OF TRIANGLES NEEDED USING NUMBER OF CUBES NEEDED
+int sun_vertices = 36; // sun block's vertex count
 int vertCount = 0;
 int blockIndex = 0;	// global so you don't have to provide it to every call of placeBlock
 
-mat4 current_transformation_matrix = {{1,0,0,0},{0,1,0,0},{0,0,1,0},{0,0,0,1}};
+
+
+mat4 ctm = {{1,0,0,0},{0,1,0,0},{0,0,1,0},{0,0,0,1}};
 mat4 model_view = {{1,0,0,0},{0,1,0,0},{0,0,1,0},{0,0,0,1}};
 mat4 projection = {{1,0,0,0},{0,1,0,0},{0,0,1,0},{0,0,0,1}};
+// mat4 sun_ctm = {{1,0,0,0},{0,1,0,0},{0,0,1,0},{0,0,0,1}};
 mat4 trans_matrix = {{1,0,0,0},{0,1,0,0},{0,0,1,0},{0,0,0,1}};
-int is_animating;
-int num_steps;
-int step_counter;
+
+// Animation variables needed
+// Add these at the top with your other defines
+#define EYE_HEIGHT 1.05 // Height of player
+#define NEAR_PLANE -0.1 // closer  player view to not see through walls
+#define FAR_PLANE -10.0 // Depth
+#define FRUSTUM_WIDTH 0.1 // Tighter view
+#define LOOK_DISTANCE 1.0
+#define NONE 0
+#define RESET_VIEW 1
+#define PLAYER_VIEW 2
+mat4 initial_ctm = {{1,0,0,0},{0,1,0,0},{0,0,1,0},{0,0,0,1}};
+mat4 initial_model_view = {{1,0,0,0},{0,1,0,0},{0,0,1,0},{0,0,0,1}};
+mat4 initial_projection = {{1,0,0,0},{0,1,0,0},{0,0,1,0},{0,0,0,1}};
+mat4 entranceCTM = {{1,0,0,0},{0,1,0,0},{0,0,1,0},{0,0,0,1}};
+mat4 entranceMV;
+mat4 entranceP;
+mat4 animation_start_ctm;
+mat4 animation_start_model_view;
+mat4 animation_start_projection;
+float animation_progress = 0.0;
+int is_animating=0.0;
+int current_step=0.0;
+int currentState=NONE;
+int lockTrackBallMovement = 0;
+int playerX;
+int playerZ;
+int lookX;
+int lookZ;
+//------------- End
 
 vec2 *tex_coords;
 vec4 *positions;
@@ -333,7 +365,7 @@ void init(void)
         }
     }
 
-    // ISLAND GENERATION (Upside-Down Pyramid Beneath the Maze)
+    // ISLAND GENERATION 
     int baseSizeX = mazeSizeX * 2 + 5;
     int baseSizeY = mazeSizeY * 2 + 5;
     int height = baseSizeX > baseSizeY ? baseSizeY / 2 : baseSizeX / 2;
@@ -355,7 +387,7 @@ void init(void)
                     continue;  // Skip this block 50% of the time
                 }
 
-				if (randInRange(1, 100) < 50) {  // 50% chance to add a block
+				if (randInRange(1, 100) < 50) {  // 20% chance to add a block
                 // Apply texture: grass for top layer, dirt for others
                 int texture = (layer == 0) ? T_GRASS : T_DIRT;
 
@@ -372,32 +404,45 @@ void init(void)
         }
     }
 
-    // Texture loading and OpenGL setup
+    float numTriangles = num_vertices/3.0;
+
+    printf("[textureTemplate] num_vertices: %i\n", num_vertices);
+
+    int tex_width = 64;
+    int tex_height = 64;
+    GLubyte my_texels[tex_width][tex_height][3];
+
+	// code copied from lab 6 - testing
+    FILE *fp = fopen("textures02.raw", "r");
+    if(fp != NULL)
+	printf("[textureTemplate] Successfully open a texture file.\n");
+    fread(my_texels, tex_width * tex_height * 3, 1, fp);
+    fclose(fp);
+
     GLuint program = initShader("vshader.glsl", "fshader.glsl");
     glUseProgram(program);
 
     GLuint mytex[1];
     glGenTextures(1, mytex);
     glBindTexture(GL_TEXTURE_2D, mytex[0]);
-    GLubyte my_texels[64][64][3];  // Texture size (64x64)
-    FILE *fp = fopen("textures02.raw", "r");
-    if (fp != NULL) {
-        printf("[textureTemplate] Successfully opened texture file.\n");
-        fread(my_texels, 64 * 64 * 3, 1, fp);
-        fclose(fp);
-    }
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, tex_width, tex_height, 0, GL_RGB, GL_UNSIGNED_BYTE, my_texels);
+    glTexParameterf( GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT );
+    glTexParameterf( GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT );
+    glTexParameterf( GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST );
+    glTexParameterf( GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST );
 
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, 64, 64, 0, GL_RGB, GL_UNSIGNED_BYTE, my_texels);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-
-    // Vertex buffer setup
+    int param;
+    glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_WIDTH, &param);
+    
     GLuint vao;
+	#ifndef __APPLE__
     glGenVertexArrays(1, &vao);
     glBindVertexArray(vao);
-    
+	#else
+	glGenVertexArraysAPPLE(1, &vao);
+    glBindVertexArrayAPPLE(vao);
+	#endif
+
     GLuint buffer;
     glGenBuffers(1, &buffer);
     glBindBuffer(GL_ARRAY_BUFFER, buffer);
@@ -405,31 +450,36 @@ void init(void)
     glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(vec4) * num_vertices, positions);
     glBufferSubData(GL_ARRAY_BUFFER, sizeof(vec4) * num_vertices, sizeof(vec2) * num_vertices, tex_coords);
 
-    // Vertex attribute pointers
+    // Goes through and does all the vertex positions
     GLuint vPosition = glGetAttribLocation(program, "vPosition");
     glEnableVertexAttribArray(vPosition);
-    glVertexAttribPointer(vPosition, 4, GL_FLOAT, GL_FALSE, 0, (GLvoid *)(0));
-
+    glVertexAttribPointer(vPosition, 4, GL_FLOAT, GL_FALSE, 0, (GLvoid *) (0));
+	
+	// same but for texture coords
     GLuint vTexCoord = glGetAttribLocation(program, "vTexCoord");
     glEnableVertexAttribArray(vTexCoord);
-    glVertexAttribPointer(vTexCoord, 2, GL_FLOAT, GL_FALSE, 0, (GLvoid *)(sizeof(vec4) * num_vertices));
+    glVertexAttribPointer(vTexCoord, 2, GL_FLOAT, GL_FALSE, 0, (GLvoid *) (sizeof(vec4) * num_vertices));
 
-    // Set up uniforms
+	// assigning all important uniforms
     ctm_location = glGetUniformLocation(program, "ctm");
+    printf("[textureTemplate] ctm_location: %i\n", ctm_location);
+    // sun_ctm_location = glGetUniformLocation(program, "sun_ctm");
+    // printf("[textureTemplate] sun_ctm_location: %i\n", sun_ctm_location);
     model_view_location = glGetUniformLocation(program, "model_view");
+    printf("[textureTemplate] model_view_location: %i\n", model_view_location);
     projection_location = glGetUniformLocation(program, "projection");
-
+    printf("[textureTemplate] projection_location: %i\n", projection_location);
+    
     GLuint texture_location = glGetUniformLocation(program, "texture");
+    printf("[textureTemplate] texture_location: %i\n", texture_location);
     glUniform1i(texture_location, 0);
 
-    // OpenGL setup for depth and background color
+    // Goes through and checks the depth of the objects and sets the background
     glEnable(GL_CULL_FACE);
     glEnable(GL_DEPTH_TEST);
-    glClearColor(0.0, 0.0, 0.0, 1.0);  // Background color
-    glDepthRange(1, 0);  // Depth testing
+    glClearColor(0.0, 0.0, 0.0, 1.0);
+    glDepthRange(1,0);
 }
-
-
 
 void display(void)
 {
@@ -438,92 +488,166 @@ void display(void)
     glPolygonMode(GL_FRONT, GL_FILL); // Fills the front fully with color
     glPolygonMode(GL_BACK, GL_LINE); // The back of the object is only an outline
 
-    glUniformMatrix4fv(ctm_location, 1, GL_FALSE, (float*) &current_transformation_matrix); //TODO: Mouse added things
-    
-    glDrawArrays(GL_TRIANGLES, 0, num_vertices); // Draw triangles starting at the beginning index which is 0
+    // glUniformMatrix4fv(ctm_location, 1, GL_FALSE, (float*) &sun_ctm); //TODO: Mouse added things
+    // glDrawArrays(GL_TRIANGLES, 0, sun_vertices); // Draw triangles starting at the beginning index which is 0
+
+    // glDrawArrays(GL_TRIANGLES, sun_vertices, num_vertices); // Draw triangles starting at the beginning index which is sun_vertices - USING 0 FOR SUN
+    glUniformMatrix4fv(ctm_location, 1, GL_FALSE, (GLfloat *) &ctm);
+    glUniformMatrix4fv(model_view_location, 1, GL_FALSE, (GLfloat *) &model_view);
+    glUniformMatrix4fv(projection_location, 1, GL_FALSE, (GLfloat *) &projection);
+    glDrawArrays(GL_TRIANGLES, 0, num_vertices); // Draw triangles starting at the beginning index which is sun_vertices - USING 0 FOR SUN
 
     glutSwapBuffers();
 }
 
+void look_at(float eye_x, float eye_y, float eye_z, float at_x, float at_y, float at_z, float up_x, float up_y, float up_z ) {
+	/*
+		ROTATION: 
+			viewing 01 - sline 23
+			viewing 02 - slide 19
+			10-08-24 video
+		TRANSLATION:
+			to negation of eye_point
+			mat4 look_translate = translate(-eye_x, -eye_y, -eye_z)???
+
+		model_view = RT!!!
+		model_view = matMult(R, T)!!!
+	*/
+	
+	// constructing rotation matrix
+	// USE 0 AT END FOR VECTORS AND 1 FOR POINTS IDIOT
+	vec4 vpn = (vec4) {(eye_x - at_x), (eye_y - at_y), (eye_z - at_z), 0};
+	vec4 n = normalize(vpn);
+
+	vec4 v_up = (vec4) {up_x, up_y, up_z, 0};
+	vec4 u_cross = crossProduct(v_up, n);
+	vec4 u = normalize(u_cross);
+
+	vec4 v_cross = crossProduct(n, u);
+	vec4 v = normalize(v_cross);
+
+	mat4 R = (mat4) {
+		{u.x, v.x, n.x, 0},
+		{u.y, v.y, n.y, 0},
+		{u.z, v.z, n.z, 0},
+		{0,   0,   0,   1}
+	};
+
+	// constructing translation matrix
+	vec4 vrp = (vec4) {eye_x, eye_y, eye_z, 1};	// eye point
+	mat4 T = translate(-vrp.x, -vrp.y, -vrp.z);
+
+	// V = RT
+	model_view = matMult(R, T);
+}
+
+void ortho(float left, float right, float bottom, float top, float near, float far) {
+	mat4 temp;
+	temp.x = (vec4) {(2/(right-left)), 0, 0, 0};
+	temp.y = (vec4) {0, (2/(top - bottom)), 0, 0};
+	temp.z = (vec4) {0, 0, (2/(near-far)), 0};
+	temp.w = (vec4) {-((right+left)/(right-left)), -((top+bottom)/(top-bottom)), -((near+far)/(near-far)), 1};
+
+	projection = temp;
+}
+
+void frustum(float left, float right, float bottom, float top, float near, float far) {
+	// vieweing 05 - slide 13
+	mat4 temp;
+
+	temp.x = (vec4) {(-2 * near)/(right - left), 0, 0, 0};
+	temp.y = (vec4) {0, ((-2 * near)/(top - bottom)), 0, 0};
+	temp.z = (vec4) {((left + right)/(right - left)), ((bottom + top)/(top - bottom)), ((near + far)/(far - near)), -1};
+	temp.w = (vec4) {0, 0, ((-2 * near * far)/(far - near)), 0};
+
+	projection = temp;
+}
+
 void mouse(int button, int state, int x, int y)
 {
-    if(button == GLUT_LEFT_BUTTON){
-        prevX = (x*2.0/511.0)-1;
-        prevY = -(y*2.0/511.0)+1;
-        prevZ = sqrt(1-(prevX*prevX) - (prevY * prevY));
-    }
+	// Locks the mouse movement for trackball
+	if(lockTrackBallMovement == 0){
+		if(button == GLUT_LEFT_BUTTON){
+			prevX = (x*2.0/511.0)-1;
+			prevY = -(y*2.0/511.0)+1;
+			prevZ = sqrt(1-(prevX*prevX) - (prevY * prevY));
+		}
+		if(button == 3){ // Scroll wheel up
+			mat4 scale_matrix = scale(1.02,1.02,1.02);
+			ctm = matMult(scale_matrix, ctm);
+		}
+		if(button == 4){ // Scroll wheel down
+			mat4 scale_matrix = scale(1/1.02,1/1.02,1/1.02);
+			ctm = matMult(scale_matrix, ctm);
+		}
+	}
+	// If want to do flashlight check if lockTrackBallMovement == 1 then check for GLUT_LEFT_BUTTON
     
-    // if(button == 3){ // Scroll wheel up
-    //     mat4 scale_matrix = scale(1.02,1.02,1.02);
-    //     current_transformation_matrix = matMult(scale_matrix, current_transformation_matrix);
-    // }
-    // if(button == 4){ // Scroll wheel down
-    //     mat4 scale_matrix = scale(1/1.02,1/1.02,1/1.02);
-    //     current_transformation_matrix = matMult(scale_matrix, current_transformation_matrix);
-    // }
     glutPostRedisplay();
 }
 
 void motion(int x, int y){ //TODO: Edit this to rotate the pyramid, add a rotate to the ctm
+    if(lockTrackBallMovement == 0){
+		// Calculate the new x,y,z values
+		float x_coordinate = (x*2.0/511.0)-1;
+		float y_coordinate = -(y*2.0/511.0)+1;
+		float z_coordinate = sqrt(1-(x_coordinate * x_coordinate) - (y_coordinate * y_coordinate));
+
+		// Get the two vectors
+		vec4 origVec = (vec4){prevX, prevY, prevZ, 0};
+		vec4 newVec = (vec4){x_coordinate, y_coordinate, z_coordinate, 0};
+
+		// Calculate the angle between the two vectors
+		// uses dot product to get angle between the vectors, then normalizes it 
+		float theta = (180/M_PI) *acos(dotProduct(newVec, origVec)/(magOfVec(newVec)*magOfVec(origVec)));
+
+		// if theta is NaN then the acos calculated incorrectly
+		if(!isnan(theta)){
+			// process of deriving the rotation matrix
+			// used example in the "Geometric Objects and Transformations 05" slides as reference
+
+			// calculate the about vector hen normalize it  
+			vec4 aboutVec = crossProduct(origVec,newVec);
+			float magOfAbout = magOfVec(aboutVec);
+			aboutVec = (vec4){aboutVec.x/magOfAbout, aboutVec.y/magOfAbout, aboutVec.z/magOfAbout, 0};
+
+			float dist = sqrt((aboutVec.y*aboutVec.y) + (aboutVec.z*aboutVec.z));
+
+			// Get the default x rotation with 0 degrees
+			// Then manually put in the rotation
+			mat4 xRotation = rotateX(0);
+			xRotation.y.y = aboutVec.z/dist;
+			xRotation.y.z = -(aboutVec.y)/dist;
+			xRotation.z.y = (aboutVec.y)/dist;
+			xRotation.z.z = aboutVec.z/dist;
+
+			// Get the transposition of the x rotation 
+			mat4 xRotation_neg = matTrans(xRotation);
+
+			// Default y rotation is inverted as OpenGL goes downward instead
+			mat4 yRotation_neg = rotateY(0);
+			yRotation_neg.x.x = dist;
+			yRotation_neg.x.z = -aboutVec.x;
+			yRotation_neg.z.x = aboutVec.x;
+			yRotation_neg.z.z = dist;
+
+			// Gets the correct y rotation the right way
+			mat4 yRotation = matTrans(yRotation_neg);
+
+			// matMults to do get the rotation matrix by going backwards on slide 12 of Geometric 05
+			mat4 rot_matrix = matMult(xRotation,matMult(yRotation_neg,matMult(rotateZ(theta),matMult(yRotation, xRotation_neg))));
+
+			// matMult to add to the transformation matrix
+			ctm = matMult(rot_matrix, ctm);
+
+		}
+
+		// // Setting the prev coords to new ones just calculated
+		prevX = x_coordinate;
+		prevY = y_coordinate;
+		prevZ = z_coordinate;
+	}
     
-    // Calculate the new x,y,z values
-    float x_coordinate = (x*2.0/511.0)-1;
-    float y_coordinate = -(y*2.0/511.0)+1;
-    float z_coordinate = sqrt(1-(x_coordinate * x_coordinate) - (y_coordinate * y_coordinate));
-
-    // Get the two vectors
-    vec4 origVec = (vec4){prevX, prevY, prevZ, 0};
-    vec4 newVec = (vec4){x_coordinate, y_coordinate, z_coordinate, 0};
-
-    // Calculate the angle between the two vectors
-    // uses dot product to get angle between the vectors, then normalizes it 
-    float theta = (180/M_PI) *acos(dotProduct(newVec, origVec)/(magOfVec(newVec)*magOfVec(origVec)));
-
-    // if theta is NaN then the acos calculated incorrectly
-    if(!isnan(theta)){
-        // process of deriving the rotation matrix
-        // used example in the "Geometric Objects and Transformations 05" slides as reference
-
-        // calculate the about vector hen normalize it  
-        vec4 aboutVec = crossProduct(origVec,newVec);
-        float magOfAbout = magOfVec(aboutVec);
-        aboutVec = (vec4){aboutVec.x/magOfAbout, aboutVec.y/magOfAbout, aboutVec.z/magOfAbout, 0};
-
-        float dist = sqrt((aboutVec.y*aboutVec.y) + (aboutVec.z*aboutVec.z));
-
-        // Get the default x rotation with 0 degrees
-        // Then manually put in the rotation
-        mat4 xRotation = rotateX(0);
-        xRotation.y.y = aboutVec.z/dist;
-        xRotation.y.z = -(aboutVec.y)/dist;
-        xRotation.z.y = (aboutVec.y)/dist;
-        xRotation.z.z = aboutVec.z/dist;
-
-        // Get the transposition of the x rotation 
-        mat4 xRotation_neg = matTrans(xRotation);
-
-        // Default y rotation is inverted as OpenGL goes downward instead
-        mat4 yRotation_neg = rotateY(0);
-        yRotation_neg.x.x = dist;
-        yRotation_neg.x.z = -aboutVec.x;
-        yRotation_neg.z.x = aboutVec.x;
-        yRotation_neg.z.z = dist;
-
-        // Gets the correct y rotation the right way
-        mat4 yRotation = matTrans(yRotation_neg);
-
-        // matMults to do get the rotation matrix by going backwards on slide 12 of Geometric 05
-        mat4 rot_matrix = matMult(xRotation,matMult(yRotation_neg,matMult(rotateZ(theta),matMult(yRotation, xRotation_neg))));
-
-        // matMult to add to the transformation matrix
-        current_transformation_matrix = matMult(rot_matrix, current_transformation_matrix);
-
-    }
-
-    // // Setting the prev coords to new ones just calculated
-    prevX = x_coordinate;
-    prevY = y_coordinate;
-    prevZ = z_coordinate;
 
     glutPostRedisplay();
 }
@@ -540,38 +664,150 @@ void keyboard(unsigned char key, int mousex, int mousey)
 	#endif
 	} else if(key == 'i'){ // Scroll wheel up - ALSO ADDING KEY 'i' BECAUSE MACOS SUCKS
         mat4 scale_matrix = scale(1.02,1.02,1.02);
-        current_transformation_matrix = matMult(scale_matrix, current_transformation_matrix);
+        ctm = matMult(scale_matrix, ctm);
     } else if(key == 'o'){ // Scroll wheel down - ALSO ADDING KEY 'O' BECAUSE MACOS SUCKS
         mat4 scale_matrix = scale(1/1.02,1/1.02,1/1.02);
-        current_transformation_matrix = matMult(scale_matrix, current_transformation_matrix);
+        ctm = matMult(scale_matrix, ctm);
+    } else if(key == ' ') { // Handle spacebar
+		// Store current matrices for calculating new angles
+		lockTrackBallMovement = 0;
+        animation_start_ctm = ctm;
+        animation_start_model_view = model_view;
+        animation_start_projection = projection;
+        current_step = 0;
+        currentState = RESET_VIEW;
+        is_animating = 1;
+    } else if(key == 'p') { // Handle player view
+        // Calculate entrance position
+		lockTrackBallMovement = 1;
+        // int entranceX = -(mazeSizeX);  // West side
+        // int entranceZ = -(mazeSizeY) + 1; // ENTRANCE LOOKING IN
+
+		// Store the start position
+		animation_start_ctm = ctm;
+        animation_start_model_view = model_view;
+        animation_start_projection = projection;
+
+		// Reset player position to entrance
+        playerX = -(mazeSizeX) - 1;
+        playerZ = -(mazeSizeY) + 1;
+        lookX = playerX + LOOK_DISTANCE;
+        lookZ = playerZ;        
+        
+        // Position camera looking east into maze
+        // look_at(
+        //     entranceX - 1, 1.05, entranceZ,  // Eye position: west of entrance
+        //     entranceX + 1, 1.05, entranceZ,  // Looking east into maze
+        //     0, 1, 0                         // Up vector
+        // );
+
+		// Set up entrance view with adjusted frustum
+        look_at(playerX, EYE_HEIGHT, playerZ,
+                lookX, EYE_HEIGHT, lookZ,
+                0, 1, 0);
+		entranceMV = model_view; // Get the new model view
+        
+		// float left, float right, float bottom, float top, float near, float far
+        // frustum(-1.0, 1.0, -1.0, 1.0, -1.0, 1.0);
+		frustum(-FRUSTUM_WIDTH, FRUSTUM_WIDTH, 
+                -FRUSTUM_WIDTH, FRUSTUM_WIDTH, 
+                NEAR_PLANE, FAR_PLANE);
+		entranceP = projection; // Get the new projection view
+
+		// Go back to starting positions
+		model_view = animation_start_model_view;
+		projection = animation_start_projection;
+
+		current_step = 0;
+		currentState = PLAYER_VIEW;
+		is_animating = 1;
     }
+	
 
     // glutPostRedisplay();
 }
 
+mat4 calculateNewCameraAngle(mat4 start, mat4 end, float progress) {
+    mat4 result;
+    // For each element in the 4x4 matrix
+	// calc x vector (first row)
+    result.x.x = start.x.x * (1.0 - progress) + end.x.x * progress;
+    result.x.y = start.x.y * (1.0 - progress) + end.x.y * progress;
+    result.x.z = start.x.z * (1.0 - progress) + end.x.z * progress;
+    result.x.w = start.x.w * (1.0 - progress) + end.x.w * progress;
+    
+    // calc y vector (second row)
+    result.y.x = start.y.x * (1.0 - progress) + end.y.x * progress;
+    result.y.y = start.y.y * (1.0 - progress) + end.y.y * progress;
+    result.y.z = start.y.z * (1.0 - progress) + end.y.z * progress;
+    result.y.w = start.y.w * (1.0 - progress) + end.y.w * progress;
+    
+    // calc z vector (third row)
+    result.z.x = start.z.x * (1.0 - progress) + end.z.x * progress;
+    result.z.y = start.z.y * (1.0 - progress) + end.z.y * progress;
+    result.z.z = start.z.z * (1.0 - progress) + end.z.z * progress;
+    result.z.w = start.z.w * (1.0 - progress) + end.z.w * progress;
+    
+    // calc w vector (fourth row)
+    result.w.x = start.w.x * (1.0 - progress) + end.w.x * progress;
+    result.w.y = start.w.y * (1.0 - progress) + end.w.y * progress;
+    result.w.z = start.w.z * (1.0 - progress) + end.w.z * progress;
+    result.w.w = start.w.w * (1.0 - progress) + end.w.w * progress;
+    
+    return result;
+}
+
 void idle(void){
-	// if(is_animating){
-	// 	if(step_counter == num_step) {
-	// 		triangle_position = target_position;
-	// 		ctm = translate(target-position.x, target_position.y, target_position.z);
-	// 		is_animating = 0;
-	// 	}
-	// 	else{
-	// 		// vec4 move_vector = v4v4_subtraction(target_position, triangle_position);
-	// 		// vec4 delta = sv4_multiplication(float step_counter / num_steps, move_vector);
-	// 		// vec4 temp_position = v4v4_addition(traingle_position, delta);
-	// 		// ctm = translate(temp_position.x, temp_position.y, temp_position.z);
-	// 		step_counter++; 
-	// 	}
-	// 	glutPostRedisplay;
+	if(is_animating) {
+        if(currentState == NONE) {
+            is_animating = 0;
+        }
+        else if(currentState == RESET_VIEW) {
+            if(current_step == 300) {
+                // Animation complete
+                ctm = initial_ctm;
+                model_view = initial_model_view;
+                projection = initial_projection;
+                currentState = NONE;
+                is_animating = 0;
+            } else {
+                // Calculate step progress
+                float progress = (float)current_step / 300;
+                
+                // calc all matrices
+                ctm = calculateNewCameraAngle(animation_start_ctm, initial_ctm, progress);
+                model_view = calculateNewCameraAngle(animation_start_model_view, initial_model_view, progress);
+                projection = calculateNewCameraAngle(animation_start_projection, initial_projection, progress);
+                current_step++;
+            }
+        }
+		else if(currentState == PLAYER_VIEW){
+			if(current_step == 300) {
+				//Animation is done
+				ctm = entranceCTM;
+				model_view = entranceMV;
+				projection = entranceP;
+				currentState = NONE;
+				is_animating = 0;
+			}else{
+				float progress = (float)current_step/300;
+				// calc all matrices
+                ctm = calculateNewCameraAngle(animation_start_ctm, entranceCTM, progress);
+                model_view = calculateNewCameraAngle(animation_start_model_view, entranceMV, progress);
+                projection = calculateNewCameraAngle(animation_start_projection, entranceP, progress);
+                current_step++;
+			}
+		}
+    }
+	glutPostRedisplay();
 	// }
 }
 
 int main(int argc, char **argv)
 {
 	// default size will be overridden if correct args are provided
-	mazeSizeX = 10;
-	mazeSizeY = 10;
+	mazeSizeX = 5;
+	mazeSizeY = 5;
 	if (argc == 3) {	// args are in the format of ./programName X Y
 		mazeSizeX = atoi(argv[1]);
 		mazeSizeY = atoi(argv[2]);	
@@ -601,7 +837,14 @@ int main(int argc, char **argv)
     glewInit();
 #endif
 	init();
-    glutDisplayFunc(display); 
+    glutDisplayFunc(display);
+
+	look_at(0, 0, (2 * mazeSizeX) + 1, 0, 0, 0, 0, 1, 0);
+	frustum(-2.5, 2.5, -2.5, 2.5, -2.5, 2.5);
+
+	initial_model_view = model_view;
+	initial_projection = projection;
+
     glutKeyboardFunc(keyboard); // Checks for any keyboard inputs
     glutMouseFunc(mouse); // Checks for the mouse
     glutMotionFunc(motion);

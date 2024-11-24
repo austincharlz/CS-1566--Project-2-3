@@ -10,6 +10,11 @@ typedef struct {
 } vec4;
 
 typedef struct {
+    float x;
+    float y;
+} vec2;
+
+typedef struct {
     vec4 x;
     vec4 y;
     vec4 z;
