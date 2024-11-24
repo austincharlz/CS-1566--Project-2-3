@@ -47,14 +47,33 @@ int sun_vertices = 36; // sun block's vertex count
 int vertCount = 0;
 int blockIndex = 0;	// global so you don't have to provide it to every call of placeBlock
 
+
+
 mat4 ctm = {{1,0,0,0},{0,1,0,0},{0,0,1,0},{0,0,0,1}};
 mat4 model_view = {{1,0,0,0},{0,1,0,0},{0,0,1,0},{0,0,0,1}};
 mat4 projection = {{1,0,0,0},{0,1,0,0},{0,0,1,0},{0,0,0,1}};
 // mat4 sun_ctm = {{1,0,0,0},{0,1,0,0},{0,0,1,0},{0,0,0,1}};
 mat4 trans_matrix = {{1,0,0,0},{0,1,0,0},{0,0,1,0},{0,0,0,1}};
-int is_animating;
-int num_steps;
-int step_counter;
+
+// Animation variables needed
+// Add these at the top with your other defines
+#define NONE 0
+#define RESET_VIEW 1
+#define PLAYER_VIEW 2
+mat4 initial_ctm = {{1,0,0,0},{0,1,0,0},{0,0,1,0},{0,0,0,1}};
+mat4 initial_model_view = {{1,0,0,0},{0,1,0,0},{0,0,1,0},{0,0,0,1}};
+mat4 initial_projection = {{1,0,0,0},{0,1,0,0},{0,0,1,0},{0,0,0,1}};
+mat4 entranceCTM = {{1,0,0,0},{0,1,0,0},{0,0,1,0},{0,0,0,1}};
+mat4 entranceMV;
+mat4 entranceP;
+mat4 animation_start_ctm;
+mat4 animation_start_model_view;
+mat4 animation_start_projection;
+float animation_progress = 0.0;
+int is_animating=0.0;
+int current_step=0.0;
+int currentState=NONE;
+//------------- End
 
 vec2 *tex_coords;
 vec4 *positions;
@@ -502,9 +521,9 @@ void frustum(float left, float right, float bottom, float top, float near, float
 
 void mouse(int button, int state, int x, int y)
 {
-	look_at(0, 0, (2 * mazeSizeX) + 1, 0, 0, 0, 0, 1, 0);
-	// ortho(2.5, -2.5, 2.5, -2.5, 2.5, -2.5);
-	frustum(-2.5, 2.5, -2.5, 2.5, -2.5, 2.5);
+	// look_at(0, 0, (2 * mazeSizeX) + 1, 0, 0, 0, 0, 1, 0);
+	// // ortho(2.5, -2.5, 2.5, -2.5, 2.5, -2.5);
+	// frustum(-2.5, 2.5, -2.5, 2.5, -2.5, 2.5);
 
 	// look_at(-mazeSizeX, 2.5, -mazeSizeY, -mazeSizeX + 1, 2.5, -mazeSizeY + 1, 0, 3, 0);
 	// frustum(-2.5, 2.5, -2.5, 2.5, -2.5, 2.5);
@@ -606,26 +625,122 @@ void keyboard(unsigned char key, int mousex, int mousey)
     } else if(key == 'o'){ // Scroll wheel down - ALSO ADDING KEY 'O' BECAUSE MACOS SUCKS
         mat4 scale_matrix = scale(1/1.02,1/1.02,1/1.02);
         ctm = matMult(scale_matrix, ctm);
+    } else if(key == ' ') { // Handle spacebar
+		// Store current matrices for calculating new angles
+        animation_start_ctm = ctm;
+        animation_start_model_view = model_view;
+        animation_start_projection = projection;
+        current_step = 0;
+        currentState = RESET_VIEW;
+        is_animating = 1;
+    } else if(key == 'p') { // Handle player view
+        // Calculate entrance position
+        int entranceX = -(mazeSizeX);  // West side
+        int entranceZ = -(mazeSizeY) + 1; // ENTRANCE LOOKING IN
+
+		// Store the start position
+		animation_start_ctm = ctm;
+        animation_start_model_view = model_view;
+        animation_start_projection = projection;        
+        
+        // Position camera looking east into maze
+        look_at(
+            entranceX - 2, 1.05, entranceZ,  // Eye position: west of entrance
+            entranceX + 2, 1.05, entranceZ,  // Looking east into maze
+            0, 1, 0                         // Up vector
+        );
+
+		entranceMV = model_view; // Get the new model view
+        
+        frustum(-1.0, 1.0, -1.0, 1.0, -1.0, 1.0);
+		entranceP = projection; // Get the new projection view
+
+		// Go back to starting positions
+		model_view = animation_start_model_view;
+		projection = animation_start_projection;
+
+		current_step = 0;
+		currentState = PLAYER_VIEW;
+		is_animating = 1;
     }
+	
 
     // glutPostRedisplay();
 }
 
+mat4 calculateNewCameraAngle(mat4 start, mat4 end, float progress) {
+    mat4 result;
+    // For each element in the 4x4 matrix
+	// calc x vector (first row)
+    result.x.x = start.x.x * (1.0 - progress) + end.x.x * progress;
+    result.x.y = start.x.y * (1.0 - progress) + end.x.y * progress;
+    result.x.z = start.x.z * (1.0 - progress) + end.x.z * progress;
+    result.x.w = start.x.w * (1.0 - progress) + end.x.w * progress;
+    
+    // calc y vector (second row)
+    result.y.x = start.y.x * (1.0 - progress) + end.y.x * progress;
+    result.y.y = start.y.y * (1.0 - progress) + end.y.y * progress;
+    result.y.z = start.y.z * (1.0 - progress) + end.y.z * progress;
+    result.y.w = start.y.w * (1.0 - progress) + end.y.w * progress;
+    
+    // calc z vector (third row)
+    result.z.x = start.z.x * (1.0 - progress) + end.z.x * progress;
+    result.z.y = start.z.y * (1.0 - progress) + end.z.y * progress;
+    result.z.z = start.z.z * (1.0 - progress) + end.z.z * progress;
+    result.z.w = start.z.w * (1.0 - progress) + end.z.w * progress;
+    
+    // calc w vector (fourth row)
+    result.w.x = start.w.x * (1.0 - progress) + end.w.x * progress;
+    result.w.y = start.w.y * (1.0 - progress) + end.w.y * progress;
+    result.w.z = start.w.z * (1.0 - progress) + end.w.z * progress;
+    result.w.w = start.w.w * (1.0 - progress) + end.w.w * progress;
+    
+    return result;
+}
+
 void idle(void){
-	// if(is_animating){
-	// 	if(step_counter == num_step) {
-	// 		triangle_position = target_position;
-	// 		ctm = translate(target-position.x, target_position.y, target_position.z);
-	// 		is_animating = 0;
-	// 	}
-	// 	else{
-	// 		// vec4 move_vector = v4v4_subtraction(target_position, triangle_position);
-	// 		// vec4 delta = sv4_multiplication(float step_counter / num_steps, move_vector);
-	// 		// vec4 temp_position = v4v4_addition(traingle_position, delta);
-	// 		// ctm = translate(temp_position.x, temp_position.y, temp_position.z);
-	// 		step_counter++; 
-	// 	}
-	// 	glutPostRedisplay;
+	if(is_animating) {
+        if(currentState == NONE) {
+            is_animating = 0;
+        }
+        else if(currentState == RESET_VIEW) {
+            if(current_step == 300) {
+                // Animation complete
+                ctm = initial_ctm;
+                model_view = initial_model_view;
+                projection = initial_projection;
+                currentState = NONE;
+                is_animating = 0;
+            } else {
+                // Calculate step progress
+                float progress = (float)current_step / 300;
+                
+                // calc all matrices
+                ctm = calculateNewCameraAngle(animation_start_ctm, initial_ctm, progress);
+                model_view = calculateNewCameraAngle(animation_start_model_view, initial_model_view, progress);
+                projection = calculateNewCameraAngle(animation_start_projection, initial_projection, progress);
+                current_step++;
+            }
+        }
+		else if(currentState == PLAYER_VIEW){
+			if(current_step == 300) {
+				//Animation is done
+				ctm = entranceCTM;
+				model_view = entranceMV;
+				projection = entranceP;
+				currentState = NONE;
+				is_animating = 0;
+			}else{
+				float progress = (float)current_step/300;
+				// calc all matrices
+                ctm = calculateNewCameraAngle(animation_start_ctm, entranceCTM, progress);
+                model_view = calculateNewCameraAngle(animation_start_model_view, entranceMV, progress);
+                projection = calculateNewCameraAngle(animation_start_projection, entranceP, progress);
+                current_step++;
+			}
+		}
+    }
+	glutPostRedisplay();
 	// }
 }
 
@@ -663,7 +778,14 @@ int main(int argc, char **argv)
     glewInit();
 #endif
 	init();
-    glutDisplayFunc(display); 
+    glutDisplayFunc(display);
+
+	look_at(0, 0, (2 * mazeSizeX) + 1, 0, 0, 0, 0, 1, 0);
+	frustum(-2.5, 2.5, -2.5, 2.5, -2.5, 2.5);
+
+	initial_model_view = model_view;
+	initial_projection = projection;
+
     glutKeyboardFunc(keyboard); // Checks for any keyboard inputs
     glutMouseFunc(mouse); // Checks for the mouse
     glutMotionFunc(motion);
