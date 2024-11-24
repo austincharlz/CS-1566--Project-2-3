@@ -355,7 +355,7 @@ void init(void)
                     continue;  // Skip this block 50% of the time
                 }
 
-				if (randInRange(1, 100) < 50) {  // 20% chance to add a block
+				if (randInRange(1, 100) < 50) {  // 50% chance to add a block
                 // Apply texture: grass for top layer, dirt for others
                 int texture = (layer == 0) ? T_GRASS : T_DIRT;
 
