@@ -488,17 +488,33 @@ void ortho(float left, float right, float bottom, float top, float near, float f
 	projection = temp;
 }
 
+void frustum(float left, float right, float bottom, float top, float near, float far) {
+	// vieweing 05 - slide 13
+	mat4 temp;
+
+	temp.x = (vec4) {(-2 * near)/(right - left), 0, 0, 0};
+	temp.y = (vec4) {0, ((-2 * near)/(top - bottom)), 0, 0};
+	temp.z = (vec4) {((left + right)/(right - left)), ((bottom + top)/(top - bottom)), ((near + far)/(far - near)), -1};
+	temp.w = (vec4) {0, 0, ((-2 * near * far)/(far - near)), 0};
+
+	projection = temp;
+}
+
 void mouse(int button, int state, int x, int y)
 {
 	look_at(0, 0, (2 * mazeSizeX) + 1, 0, 0, 0, 0, 1, 0);
-	ortho(15, -15, 15, -15, 15, -15);
+	// ortho(2.5, -2.5, 2.5, -2.5, 2.5, -2.5);
+	frustum(-2.5, 2.5, -2.5, 2.5, -2.5, 2.5);
+
+	// look_at(-mazeSizeX, 2.5, -mazeSizeY, -mazeSizeX + 1, 2.5, -mazeSizeY + 1, 0, 3, 0);
+	// frustum(-2.5, 2.5, -2.5, 2.5, -2.5, 2.5);
+
     if(button == GLUT_LEFT_BUTTON){
         prevX = (x*2.0/511.0)-1;
         prevY = -(y*2.0/511.0)+1;
         prevZ = sqrt(1-(prevX*prevX) - (prevY * prevY));
     }
     
-<<<<<<< HEAD
     if(button == 3){ // Scroll wheel up
         mat4 scale_matrix = scale(1.02,1.02,1.02);
         ctm = matMult(scale_matrix, ctm);
@@ -507,16 +523,6 @@ void mouse(int button, int state, int x, int y)
         mat4 scale_matrix = scale(1/1.02,1/1.02,1/1.02);
         ctm = matMult(scale_matrix, ctm);
     }
-=======
-    // if(button == 3){ // Scroll wheel up
-    //     mat4 scale_matrix = scale(1.02,1.02,1.02);
-    //     current_transformation_matrix = matMult(scale_matrix, current_transformation_matrix);
-    // }
-    // if(button == 4){ // Scroll wheel down
-    //     mat4 scale_matrix = scale(1/1.02,1/1.02,1/1.02);
-    //     current_transformation_matrix = matMult(scale_matrix, current_transformation_matrix);
-    // }
->>>>>>> 5039f82eca729b44ed6b1ebedfaa75319d987fad
     glutPostRedisplay();
 }
 
@@ -606,21 +612,21 @@ void keyboard(unsigned char key, int mousex, int mousey)
 }
 
 void idle(void){
-	if(is_animating){
-		if(step_counter == num_step) {
-			triangle_position = target_position;
-			ctm = translate(target-position.x, target_position.y, target_position.z);
-			is_animating = 0;
-		}
-		else{
-			// vec4 move_vector = v4v4_subtraction(target_position, triangle_position);
-			// vec4 delta = sv4_multiplication(float step_counter / num_steps, move_vector);
-			// vec4 temp_position = v4v4_addition(traingle_position, delta);
-			// ctm = translate(temp_position.x, temp_position.y, temp_position.z);
-			step_counter++; 
-		}
-		glutPostRedisplay;
-	}
+	// if(is_animating){
+	// 	if(step_counter == num_step) {
+	// 		triangle_position = target_position;
+	// 		ctm = translate(target-position.x, target_position.y, target_position.z);
+	// 		is_animating = 0;
+	// 	}
+	// 	else{
+	// 		// vec4 move_vector = v4v4_subtraction(target_position, triangle_position);
+	// 		// vec4 delta = sv4_multiplication(float step_counter / num_steps, move_vector);
+	// 		// vec4 temp_position = v4v4_addition(traingle_position, delta);
+	// 		// ctm = translate(temp_position.x, temp_position.y, temp_position.z);
+	// 		step_counter++; 
+	// 	}
+	// 	glutPostRedisplay;
+	// }
 }
 
 int main(int argc, char **argv)
