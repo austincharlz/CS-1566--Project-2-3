@@ -52,6 +52,9 @@ mat4 model_view = {{1,0,0,0},{0,1,0,0},{0,0,1,0},{0,0,0,1}};
 mat4 projection = {{1,0,0,0},{0,1,0,0},{0,0,1,0},{0,0,0,1}};
 // mat4 sun_ctm = {{1,0,0,0},{0,1,0,0},{0,0,1,0},{0,0,0,1}};
 mat4 trans_matrix = {{1,0,0,0},{0,1,0,0},{0,0,1,0},{0,0,0,1}};
+int is_animating;
+int num_steps;
+int step_counter;
 
 vec2 *tex_coords;
 vec4 *positions;
@@ -495,6 +498,7 @@ void mouse(int button, int state, int x, int y)
         prevZ = sqrt(1-(prevX*prevX) - (prevY * prevY));
     }
     
+<<<<<<< HEAD
     if(button == 3){ // Scroll wheel up
         mat4 scale_matrix = scale(1.02,1.02,1.02);
         ctm = matMult(scale_matrix, ctm);
@@ -503,6 +507,16 @@ void mouse(int button, int state, int x, int y)
         mat4 scale_matrix = scale(1/1.02,1/1.02,1/1.02);
         ctm = matMult(scale_matrix, ctm);
     }
+=======
+    // if(button == 3){ // Scroll wheel up
+    //     mat4 scale_matrix = scale(1.02,1.02,1.02);
+    //     current_transformation_matrix = matMult(scale_matrix, current_transformation_matrix);
+    // }
+    // if(button == 4){ // Scroll wheel down
+    //     mat4 scale_matrix = scale(1/1.02,1/1.02,1/1.02);
+    //     current_transformation_matrix = matMult(scale_matrix, current_transformation_matrix);
+    // }
+>>>>>>> 5039f82eca729b44ed6b1ebedfaa75319d987fad
     glutPostRedisplay();
 }
 
@@ -572,13 +586,14 @@ void motion(int x, int y){ //TODO: Edit this to rotate the pyramid, add a rotate
 
 void keyboard(unsigned char key, int mousex, int mousey)
 {
+
     // Causes the program to terminate if the user presses q
     if(key == 'q') {
-#ifndef __APPLE__
+		#ifndef __APPLE__
     	glutLeaveMainLoop();
-#else
+	#else
 		exit(0);
-#endif
+	#endif
 	} else if(key == 'i'){ // Scroll wheel up - ALSO ADDING KEY 'i' BECAUSE MACOS SUCKS
         mat4 scale_matrix = scale(1.02,1.02,1.02);
         ctm = matMult(scale_matrix, ctm);
@@ -588,6 +603,24 @@ void keyboard(unsigned char key, int mousex, int mousey)
     }
 
     // glutPostRedisplay();
+}
+
+void idle(void){
+	if(is_animating){
+		if(step_counter == num_step) {
+			triangle_position = target_position;
+			ctm = translate(target-position.x, target_position.y, target_position.z);
+			is_animating = 0;
+		}
+		else{
+			// vec4 move_vector = v4v4_subtraction(target_position, triangle_position);
+			// vec4 delta = sv4_multiplication(float step_counter / num_steps, move_vector);
+			// vec4 temp_position = v4v4_addition(traingle_position, delta);
+			// ctm = translate(temp_position.x, temp_position.y, temp_position.z);
+			step_counter++; 
+		}
+		glutPostRedisplay;
+	}
 }
 
 int main(int argc, char **argv)
@@ -628,6 +661,7 @@ int main(int argc, char **argv)
     glutKeyboardFunc(keyboard); // Checks for any keyboard inputs
     glutMouseFunc(mouse); // Checks for the mouse
     glutMotionFunc(motion);
+	glutIdleFunc(idle);
     glutMainLoop(); // Makes the whole main function wait so the program does not terminate
 
     return 0;
