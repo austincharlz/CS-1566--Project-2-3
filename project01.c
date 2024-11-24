@@ -61,10 +61,16 @@ mat4 trans_matrix = {{1,0,0,0},{0,1,0,0},{0,0,1,0},{0,0,0,1}};
 #define NEAR_PLANE -0.1 // closer  player view to not see through walls
 #define FAR_PLANE -10.0 // Depth
 #define FRUSTUM_WIDTH 0.1 // Tighter view
-#define LOOK_DISTANCE 1.0
+// #define LOOK_DISTANCE 1.0
 #define NONE 0
 #define RESET_VIEW 1
 #define PLAYER_VIEW 2
+#define WALK_FORWARD 3
+#define WALK_BACKWARD 4
+#define STRAFE_LEFT 5
+#define STRAFE_RIGHT 6
+#define TURN_LEFT 7
+#define TURN_RIGHT 8
 mat4 initial_ctm = {{1,0,0,0},{0,1,0,0},{0,0,1,0},{0,0,0,1}};
 mat4 initial_model_view = {{1,0,0,0},{0,1,0,0},{0,0,1,0},{0,0,0,1}};
 mat4 initial_projection = {{1,0,0,0},{0,1,0,0},{0,0,1,0},{0,0,0,1}};
@@ -75,14 +81,23 @@ mat4 animation_start_ctm;
 mat4 animation_start_model_view;
 mat4 animation_start_projection;
 float animation_progress = 0.0;
+float look_distance = 0;
 int is_animating=0.0;
 int current_step=0.0;
 int currentState=NONE;
 int lockTrackBallMovement = 0;
-int playerX;
-int playerZ;
+float playerX;
+float playerZ;
 int lookX;
 int lookZ;
+
+// Add these as global variables to store matrices for turning
+mat4 turnStartMV;
+mat4 turnTargetMV;
+
+float playerAngle = 0.0;
+float targetAngle = 0.0;
+float startAngle = 0.0;
 //------------- End
 
 vec2 *tex_coords;
@@ -328,6 +343,13 @@ void placeBlock(int blockX, int blockY, int blockZ, int texture) {
 void init(void)
 {   
     srand(time(NULL)); // Sets the random seed for RNG
+
+	if(mazeSizeX > mazeSizeY){
+		look_distance = mazeSizeX + 1;
+	}
+	else{
+		look_distance = mazeSizeY + 1;
+	}
 
     // Calculate the total number of blocks (maze blocks + pyramid blocks)
     int num_blocks = ((mazeSizeX * 2 + 1) * (mazeSizeY * 2 + 1) * 3) + ((mazeSizeX * 3 + 2) * (mazeSizeY * 3 + 2) * (mazeSizeX / 2));
@@ -652,9 +674,67 @@ void motion(int x, int y){ //TODO: Edit this to rotate the pyramid, add a rotate
     glutPostRedisplay();
 }
 
+void initializePlayer() {
+    // Initialize player position to entrance
+	playerX = -(mazeSizeX) - 1;
+	playerZ = -(mazeSizeY) + 1;
+	playerAngle = 0.0;
+	lookX = playerX + look_distance;
+	lookZ = playerZ;  
+}
+
+// Add this function to check if a position is valid (not inside a wall)
+bool isValidPosition(float x, float z) {
+    // Convert world coordinates to maze array indices
+    int mazeX = (int)(x + (mazeSizeX * 2 + 1) / 2);
+    int mazeZ = (int)(z + (mazeSizeY * 2 + 1) / 2);
+    
+    // Check if position is within maze bounds
+    if(mazeX < -1 || mazeX >= (2 * mazeSizeX + 1) || 
+       mazeZ < -1 || mazeZ >= (2 * mazeSizeY + 1)) {
+        return false;
+    }
+    
+    // Check if position is a wall or corner
+    return maze[mazeZ][mazeX] == BLANK_CELL;
+}
+
+void movePlayer(float newX, float newZ, int moveState) {
+    if(isValidPosition(newX, newZ)) {
+        // Store current state
+        animation_start_model_view = model_view;
+        animation_start_projection = projection;
+        
+        // Calculate target position
+        playerX = newX;
+        playerZ = newZ;
+        lookX = playerX + cos(playerAngle);
+        lookZ = playerZ + sin(playerAngle);
+        
+        // Set up target view
+        look_at(playerX, EYE_HEIGHT, playerZ,
+               lookX, EYE_HEIGHT, lookZ,
+               0, 1, 0);
+        
+        // Store target model view
+        mat4 targetMV = model_view;
+        
+        // Reset to start position for animation
+        model_view = animation_start_model_view;
+        
+        // Store target for animation
+        turnTargetMV = targetMV;
+        
+        current_step = 0;
+        currentState = moveState;
+        is_animating = 1;
+    }
+}
+
 void keyboard(unsigned char key, int mousex, int mousey)
 {
 
+	float moveX, moveZ;
     // Causes the program to terminate if the user presses q
     if(key == 'q') {
 		#ifndef __APPLE__
@@ -689,17 +769,11 @@ void keyboard(unsigned char key, int mousex, int mousey)
         animation_start_projection = projection;
 
 		// Reset player position to entrance
-        playerX = -(mazeSizeX) - 1;
-        playerZ = -(mazeSizeY) + 1;
-        lookX = playerX + LOOK_DISTANCE;
-        lookZ = playerZ;        
-        
-        // Position camera looking east into maze
-        // look_at(
-        //     entranceX - 1, 1.05, entranceZ,  // Eye position: west of entrance
-        //     entranceX + 1, 1.05, entranceZ,  // Looking east into maze
-        //     0, 1, 0                         // Up vector
-        // );
+        // playerX = -(mazeSizeX) - 1;
+        // playerZ = -(mazeSizeY) + 1;
+        // lookX = playerX + look_distance;
+        // lookZ = playerZ;
+		initializePlayer();        
 
 		// Set up entrance view with adjusted frustum
         look_at(playerX, EYE_HEIGHT, playerZ,
@@ -721,9 +795,125 @@ void keyboard(unsigned char key, int mousex, int mousey)
 		current_step = 0;
 		currentState = PLAYER_VIEW;
 		is_animating = 1;
-    }
-	
-
+    } else if(key == 'w'){
+		animation_start_ctm = ctm;
+		animation_start_model_view = model_view;
+		animation_start_projection = projection;
+		
+		moveX = playerX + cos(playerAngle);
+		moveZ = playerZ + sin(playerAngle);
+		
+		if(isValidPosition(moveX, moveZ)) {
+			playerX = moveX;
+			playerZ = moveZ;
+			lookX = playerX + cos(playerAngle);
+			lookZ = playerZ + sin(playerAngle);
+			current_step = 0;
+			currentState = WALK_FORWARD;
+			is_animating = 1;
+		}
+	} else if(key == 's'){
+		animation_start_ctm = ctm;
+		animation_start_model_view = model_view;
+		animation_start_projection = projection;
+		
+		moveX = playerX - cos(playerAngle);
+		moveZ = playerZ - sin(playerAngle);
+		
+		if(isValidPosition(moveX, moveZ)) {
+			playerX = moveX;
+			playerZ = moveZ;
+			lookX = playerX + cos(playerAngle);
+			lookZ = playerZ + sin(playerAngle);
+			current_step = 0;
+			currentState = WALK_BACKWARD;
+			is_animating = 1;
+		}
+	} else if(key == 'd'){
+		animation_start_ctm = ctm;
+		animation_start_model_view = model_view;
+		animation_start_projection = projection;
+		
+		moveX = playerX - sin(playerAngle);
+		moveZ = playerZ + cos(playerAngle);
+		
+		if(isValidPosition(moveX, moveZ)) {
+			playerX = moveX;
+			playerZ = moveZ;
+			lookX = playerX + cos(playerAngle);
+			lookZ = playerZ + sin(playerAngle);
+			current_step = 0;
+			currentState = STRAFE_RIGHT;
+			is_animating = 1;
+		}
+	} else if(key == 'a'){
+		animation_start_ctm = ctm;
+		animation_start_model_view = model_view;
+		animation_start_projection = projection;
+		
+		moveX = playerX + sin(playerAngle);
+		moveZ = playerZ - cos(playerAngle);
+		
+		if(isValidPosition(moveX, moveZ)) {
+			playerX = moveX;
+			playerZ = moveZ;
+			lookX = playerX + cos(playerAngle);
+			lookZ = playerZ + sin(playerAngle);
+			current_step = 0;
+			currentState = STRAFE_LEFT;
+			is_animating = 1;
+		}
+	} else if(key == ','){ // Turn left
+		// Store start matrices
+		animation_start_model_view = model_view;
+		animation_start_projection = projection;
+		animation_start_ctm = ctm;
+		
+		// Calculate target angle and matrices
+		targetAngle = playerAngle - M_PI/2;
+		float targetLookX = playerX + cos(targetAngle);
+		float targetLookZ = playerZ + sin(targetAngle);
+		
+		// Store current position and calculate target view
+		look_at(playerX, EYE_HEIGHT, playerZ,
+				targetLookX, EYE_HEIGHT, targetLookZ,
+				0, 1, 0);
+				
+		// Store target matrices
+		turnTargetMV = model_view;
+		
+		// Reset to starting position for animation
+		model_view = animation_start_model_view;
+		
+		current_step = 0;
+		currentState = TURN_LEFT;
+		is_animating = 1;
+	} else if(key == '.'){ // Turn right
+		// Store start matrices
+		animation_start_model_view = model_view;
+		animation_start_projection = projection;
+		animation_start_ctm = ctm;
+		
+		// Calculate target angle and matrices
+		targetAngle = playerAngle + M_PI/2;
+		float targetLookX = playerX + cos(targetAngle);
+		float targetLookZ = playerZ + sin(targetAngle);
+		
+		// Store current position and calculate target view
+		look_at(playerX, EYE_HEIGHT, playerZ,
+				targetLookX, EYE_HEIGHT, targetLookZ,
+				0, 1, 0);
+				
+		// Store target matrices
+		turnTargetMV = model_view;
+		
+		// Reset to starting position for animation
+		model_view = animation_start_model_view;
+		
+		current_step = 0;
+		currentState = TURN_RIGHT;
+		is_animating = 1;
+	}
     // glutPostRedisplay();
 }
 
@@ -798,10 +988,48 @@ void idle(void){
                 current_step++;
 			}
 		}
+		else if(currentState == WALK_FORWARD || currentState == WALK_BACKWARD || 
+                currentState == STRAFE_LEFT || currentState == STRAFE_RIGHT) {
+            if(current_step == 300) {
+                look_at(playerX, EYE_HEIGHT, playerZ,
+                       lookX, EYE_HEIGHT, lookZ,
+                       0, 1, 0);
+                currentState = NONE;
+                is_animating = 0;
+            } else {
+                float progress = (float)current_step / 300;
+                // Matches structure of other animations
+                ctm = calculateNewCameraAngle(animation_start_ctm, ctm, progress);
+                model_view = calculateNewCameraAngle(animation_start_model_view, model_view, progress);
+                projection = calculateNewCameraAngle(animation_start_projection, projection, progress);
+                current_step++;
+            }
+			// glutPostRedisplay();
+        }
+		else if(currentState == TURN_LEFT || currentState == TURN_RIGHT) {
+            if(current_step == 30) {
+                // Animation complete
+                model_view = turnTargetMV;
+                playerAngle = targetAngle;
+                lookX = playerX + cos(playerAngle);
+                lookZ = playerZ + sin(playerAngle);
+                currentState = NONE;
+                is_animating = 0;
+            } else {
+                float progress = (float)current_step / 30;
+                
+                // Interpolate the model view matrix for smooth turning
+                model_view = calculateNewCameraAngle(animation_start_model_view, turnTargetMV, progress);
+                
+                current_step++;
+            }
+        }
     }
 	glutPostRedisplay();
 	// }
 }
+
+
 
 int main(int argc, char **argv)
 {
@@ -839,6 +1067,7 @@ int main(int argc, char **argv)
 	init();
     glutDisplayFunc(display);
 
+	initializePlayer();
 	look_at(0, 0, (2 * mazeSizeX) + 1, 0, 0, 0, 0, 1, 0);
 	frustum(-2.5, 2.5, -2.5, 2.5, -2.5, 2.5);
 
