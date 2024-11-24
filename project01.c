@@ -57,6 +57,11 @@ mat4 trans_matrix = {{1,0,0,0},{0,1,0,0},{0,0,1,0},{0,0,0,1}};
 
 // Animation variables needed
 // Add these at the top with your other defines
+#define EYE_HEIGHT 1.05 // Height of player
+#define NEAR_PLANE -0.1 // closer  player view to not see through walls
+#define FAR_PLANE -10.0 // Depth
+#define FRUSTUM_WIDTH 0.1 // Tighter view
+#define LOOK_DISTANCE 1.0
 #define NONE 0
 #define RESET_VIEW 1
 #define PLAYER_VIEW 2
@@ -73,6 +78,11 @@ float animation_progress = 0.0;
 int is_animating=0.0;
 int current_step=0.0;
 int currentState=NONE;
+int lockTrackBallMovement = 0;
+int playerX;
+int playerZ;
+int lookX;
+int lookZ;
 //------------- End
 
 vec2 *tex_coords;
@@ -521,90 +531,89 @@ void frustum(float left, float right, float bottom, float top, float near, float
 
 void mouse(int button, int state, int x, int y)
 {
-	// look_at(0, 0, (2 * mazeSizeX) + 1, 0, 0, 0, 0, 1, 0);
-	// // ortho(2.5, -2.5, 2.5, -2.5, 2.5, -2.5);
-	// frustum(-2.5, 2.5, -2.5, 2.5, -2.5, 2.5);
-
-	// look_at(-mazeSizeX, 2.5, -mazeSizeY, -mazeSizeX + 1, 2.5, -mazeSizeY + 1, 0, 3, 0);
-	// frustum(-2.5, 2.5, -2.5, 2.5, -2.5, 2.5);
-
-    if(button == GLUT_LEFT_BUTTON){
-        prevX = (x*2.0/511.0)-1;
-        prevY = -(y*2.0/511.0)+1;
-        prevZ = sqrt(1-(prevX*prevX) - (prevY * prevY));
-    }
+	// Locks the mouse movement for trackball
+	if(lockTrackBallMovement == 0){
+		if(button == GLUT_LEFT_BUTTON){
+			prevX = (x*2.0/511.0)-1;
+			prevY = -(y*2.0/511.0)+1;
+			prevZ = sqrt(1-(prevX*prevX) - (prevY * prevY));
+		}
+		if(button == 3){ // Scroll wheel up
+			mat4 scale_matrix = scale(1.02,1.02,1.02);
+			ctm = matMult(scale_matrix, ctm);
+		}
+		if(button == 4){ // Scroll wheel down
+			mat4 scale_matrix = scale(1/1.02,1/1.02,1/1.02);
+			ctm = matMult(scale_matrix, ctm);
+		}
+	}
+	// If want to do flashlight check if lockTrackBallMovement == 1 then check for GLUT_LEFT_BUTTON
     
-    if(button == 3){ // Scroll wheel up
-        mat4 scale_matrix = scale(1.02,1.02,1.02);
-        ctm = matMult(scale_matrix, ctm);
-    }
-    if(button == 4){ // Scroll wheel down
-        mat4 scale_matrix = scale(1/1.02,1/1.02,1/1.02);
-        ctm = matMult(scale_matrix, ctm);
-    }
     glutPostRedisplay();
 }
 
 void motion(int x, int y){ //TODO: Edit this to rotate the pyramid, add a rotate to the ctm
+    if(lockTrackBallMovement == 0){
+		// Calculate the new x,y,z values
+		float x_coordinate = (x*2.0/511.0)-1;
+		float y_coordinate = -(y*2.0/511.0)+1;
+		float z_coordinate = sqrt(1-(x_coordinate * x_coordinate) - (y_coordinate * y_coordinate));
+
+		// Get the two vectors
+		vec4 origVec = (vec4){prevX, prevY, prevZ, 0};
+		vec4 newVec = (vec4){x_coordinate, y_coordinate, z_coordinate, 0};
+
+		// Calculate the angle between the two vectors
+		// uses dot product to get angle between the vectors, then normalizes it 
+		float theta = (180/M_PI) *acos(dotProduct(newVec, origVec)/(magOfVec(newVec)*magOfVec(origVec)));
+
+		// if theta is NaN then the acos calculated incorrectly
+		if(!isnan(theta)){
+			// process of deriving the rotation matrix
+			// used example in the "Geometric Objects and Transformations 05" slides as reference
+
+			// calculate the about vector hen normalize it  
+			vec4 aboutVec = crossProduct(origVec,newVec);
+			float magOfAbout = magOfVec(aboutVec);
+			aboutVec = (vec4){aboutVec.x/magOfAbout, aboutVec.y/magOfAbout, aboutVec.z/magOfAbout, 0};
+
+			float dist = sqrt((aboutVec.y*aboutVec.y) + (aboutVec.z*aboutVec.z));
+
+			// Get the default x rotation with 0 degrees
+			// Then manually put in the rotation
+			mat4 xRotation = rotateX(0);
+			xRotation.y.y = aboutVec.z/dist;
+			xRotation.y.z = -(aboutVec.y)/dist;
+			xRotation.z.y = (aboutVec.y)/dist;
+			xRotation.z.z = aboutVec.z/dist;
+
+			// Get the transposition of the x rotation 
+			mat4 xRotation_neg = matTrans(xRotation);
+
+			// Default y rotation is inverted as OpenGL goes downward instead
+			mat4 yRotation_neg = rotateY(0);
+			yRotation_neg.x.x = dist;
+			yRotation_neg.x.z = -aboutVec.x;
+			yRotation_neg.z.x = aboutVec.x;
+			yRotation_neg.z.z = dist;
+
+			// Gets the correct y rotation the right way
+			mat4 yRotation = matTrans(yRotation_neg);
+
+			// matMults to do get the rotation matrix by going backwards on slide 12 of Geometric 05
+			mat4 rot_matrix = matMult(xRotation,matMult(yRotation_neg,matMult(rotateZ(theta),matMult(yRotation, xRotation_neg))));
+
+			// matMult to add to the transformation matrix
+			ctm = matMult(rot_matrix, ctm);
+
+		}
+
+		// // Setting the prev coords to new ones just calculated
+		prevX = x_coordinate;
+		prevY = y_coordinate;
+		prevZ = z_coordinate;
+	}
     
-    // Calculate the new x,y,z values
-    float x_coordinate = (x*2.0/511.0)-1;
-    float y_coordinate = -(y*2.0/511.0)+1;
-    float z_coordinate = sqrt(1-(x_coordinate * x_coordinate) - (y_coordinate * y_coordinate));
-
-    // Get the two vectors
-    vec4 origVec = (vec4){prevX, prevY, prevZ, 0};
-    vec4 newVec = (vec4){x_coordinate, y_coordinate, z_coordinate, 0};
-
-    // Calculate the angle between the two vectors
-    // uses dot product to get angle between the vectors, then normalizes it 
-    float theta = (180/M_PI) *acos(dotProduct(newVec, origVec)/(magOfVec(newVec)*magOfVec(origVec)));
-
-    // if theta is NaN then the acos calculated incorrectly
-    if(!isnan(theta)){
-        // process of deriving the rotation matrix
-        // used example in the "Geometric Objects and Transformations 05" slides as reference
-
-        // calculate the about vector hen normalize it  
-        vec4 aboutVec = crossProduct(origVec,newVec);
-        float magOfAbout = magOfVec(aboutVec);
-        aboutVec = (vec4){aboutVec.x/magOfAbout, aboutVec.y/magOfAbout, aboutVec.z/magOfAbout, 0};
-
-        float dist = sqrt((aboutVec.y*aboutVec.y) + (aboutVec.z*aboutVec.z));
-
-        // Get the default x rotation with 0 degrees
-        // Then manually put in the rotation
-        mat4 xRotation = rotateX(0);
-        xRotation.y.y = aboutVec.z/dist;
-        xRotation.y.z = -(aboutVec.y)/dist;
-        xRotation.z.y = (aboutVec.y)/dist;
-        xRotation.z.z = aboutVec.z/dist;
-
-        // Get the transposition of the x rotation 
-        mat4 xRotation_neg = matTrans(xRotation);
-
-        // Default y rotation is inverted as OpenGL goes downward instead
-        mat4 yRotation_neg = rotateY(0);
-        yRotation_neg.x.x = dist;
-        yRotation_neg.x.z = -aboutVec.x;
-        yRotation_neg.z.x = aboutVec.x;
-        yRotation_neg.z.z = dist;
-
-        // Gets the correct y rotation the right way
-        mat4 yRotation = matTrans(yRotation_neg);
-
-        // matMults to do get the rotation matrix by going backwards on slide 12 of Geometric 05
-        mat4 rot_matrix = matMult(xRotation,matMult(yRotation_neg,matMult(rotateZ(theta),matMult(yRotation, xRotation_neg))));
-
-        // matMult to add to the transformation matrix
-        ctm = matMult(rot_matrix, ctm);
-
-    }
-
-    // // Setting the prev coords to new ones just calculated
-    prevX = x_coordinate;
-    prevY = y_coordinate;
-    prevZ = z_coordinate;
 
     glutPostRedisplay();
 }
@@ -627,6 +636,7 @@ void keyboard(unsigned char key, int mousex, int mousey)
         ctm = matMult(scale_matrix, ctm);
     } else if(key == ' ') { // Handle spacebar
 		// Store current matrices for calculating new angles
+		lockTrackBallMovement = 0;
         animation_start_ctm = ctm;
         animation_start_model_view = model_view;
         animation_start_projection = projection;
@@ -635,24 +645,39 @@ void keyboard(unsigned char key, int mousex, int mousey)
         is_animating = 1;
     } else if(key == 'p') { // Handle player view
         // Calculate entrance position
-        int entranceX = -(mazeSizeX);  // West side
-        int entranceZ = -(mazeSizeY) + 1; // ENTRANCE LOOKING IN
+		lockTrackBallMovement = 1;
+        // int entranceX = -(mazeSizeX);  // West side
+        // int entranceZ = -(mazeSizeY) + 1; // ENTRANCE LOOKING IN
 
 		// Store the start position
 		animation_start_ctm = ctm;
         animation_start_model_view = model_view;
-        animation_start_projection = projection;        
+        animation_start_projection = projection;
+
+		// Reset player position to entrance
+        playerX = -(mazeSizeX) - 1;
+        playerZ = -(mazeSizeY) + 1;
+        lookX = playerX + LOOK_DISTANCE;
+        lookZ = playerZ;        
         
         // Position camera looking east into maze
-        look_at(
-            entranceX - 2, 1.05, entranceZ,  // Eye position: west of entrance
-            entranceX + 2, 1.05, entranceZ,  // Looking east into maze
-            0, 1, 0                         // Up vector
-        );
+        // look_at(
+        //     entranceX - 1, 1.05, entranceZ,  // Eye position: west of entrance
+        //     entranceX + 1, 1.05, entranceZ,  // Looking east into maze
+        //     0, 1, 0                         // Up vector
+        // );
 
+		// Set up entrance view with adjusted frustum
+        look_at(playerX, EYE_HEIGHT, playerZ,
+                lookX, EYE_HEIGHT, lookZ,
+                0, 1, 0);
 		entranceMV = model_view; // Get the new model view
         
-        frustum(-1.0, 1.0, -1.0, 1.0, -1.0, 1.0);
+		// float left, float right, float bottom, float top, float near, float far
+        // frustum(-1.0, 1.0, -1.0, 1.0, -1.0, 1.0);
+		frustum(-FRUSTUM_WIDTH, FRUSTUM_WIDTH, 
+                -FRUSTUM_WIDTH, FRUSTUM_WIDTH, 
+                NEAR_PLANE, FAR_PLANE);
 		entranceP = projection; // Get the new projection view
 
 		// Go back to starting positions
