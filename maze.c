@@ -7,6 +7,13 @@ int xLength, yLength;					// specified maze dimensions
 int totalMazeWidth, totalMazeHeight;	// ACTUAL TOTAL DIMENSIONS including walls and corners
 int **maze;								// believe it or not, the maze.
 int **solution;
+char *beginToEndSol = NULL;
+char *anywhereSol = NULL;
+int solLength = 0; // Logical size of beginToEndSol
+int solCapacity = 0; // Physical size of beginToEndSol
+int aSolLength = 0; // Logical size anywhereSol
+int aSolCapacity = 0; // Physical size of anywhereSol
+
 
 void initializeMaze() {
 	// seeding the random number generator
@@ -203,7 +210,33 @@ int** getMaze(int x, int y) {
 
 // -------------------------- MAZE SOLVER ----------------------------------
 
-void solveMazeUtil(int x, int y, int currentDir, int **visited, int directions[4][2]) {
+void addMove(int index, char move, int normal){
+    if(normal == 1){
+        if(solLength >= solCapacity){ // Check to see if need to double the array
+            solCapacity = (solCapacity == 0) ? 1 : solCapacity * 2; // double the array
+            beginToEndSol = (char*) realloc(beginToEndSol, solCapacity * sizeof(char)); // reallocate the memory
+            if(beginToEndSol == NULL){
+                perror("Failed to reallocate beginToEndSol memory");
+                exit(EXIT_FAILURE);
+            }
+        }
+        beginToEndSol[index] = move; // Add the move
+    }
+    else{
+        if(aSolLength >= aSolCapacity){
+            aSolCapacity = (aSolCapacity == 0) ? 1 : aSolCapacity * 2;
+            anywhereSol = (char*) realloc(anywhereSol, aSolCapacity * sizeof(char));
+            if(anywhereSol == NULL){
+                perror("failed to reallocate anywhereSol memory");
+                exit(EXIT_FAILURE);
+            }
+        }
+        anywhereSol[index] = move;
+    }
+    
+}
+
+void solveMazeUtil(int x, int y, int currentDir, int **visited, int directions[4][2], int currentIndex, int normal) {
     // Check if out of bounds or at the exit
     if (x < 0 || x >= totalMazeWidth || y < 0 || y >= totalMazeHeight || visited[y][x]) {
         return;
@@ -211,6 +244,12 @@ void solveMazeUtil(int x, int y, int currentDir, int **visited, int directions[4
 
     visited[y][x] = 1;
     solution[y][x] = 0;
+    if(normal == 1){
+        solLength++;
+    }
+    else{
+        aSolLength++;
+    }
 
     // If at the exit, stop recursion
     if (x == totalMazeWidth - 1 && y == totalMazeHeight - 2) {
@@ -225,11 +264,30 @@ void solveMazeUtil(int x, int y, int currentDir, int **visited, int directions[4
 
         // Check if new cell is open and not visited
         if (newX >= 0 && newX < totalMazeWidth && newY >= 0 && newY < totalMazeHeight && maze[newY][newX] == 0 && !visited[newY][newX]) {
-            solveMazeUtil(newX, newY, testDir, visited, directions);
+            char move;
+            if(try == 0){
+                move = 'L'; // Left Turn
+            }
+            else if(try == 2){
+                move = 'R'; // Right Turn
+            }
+            else{
+                move = 'S'; // Straight
+            }
+            addMove(currentIndex, move, normal);
+            
+            solveMazeUtil(newX, newY, testDir, visited, directions, currentIndex+1, normal);
 
             // If we found a solution (end point reached), no need to backtrack
             if (solution[totalMazeHeight - 2][totalMazeWidth - 1] == 0) {
                 return;
+            }
+            // Backtrack
+            if(normal==1){
+                solLength--;
+            }
+            else{
+                aSolLength--;
             }
         }
     }
@@ -241,6 +299,11 @@ void solveMazeUtil(int x, int y, int currentDir, int **visited, int directions[4
 // Input 1 to have it default from start of maze
 // Input any other number to start at a different point
 void solveMaze(int normal) {
+
+    // solLength = 0;
+    // solCapacity = 0;
+    // beginToEndSol = NULL;
+
     // Create solution maze, same dimensions as original
     solution = (int **)malloc(totalMazeHeight * sizeof(int *));
     for (int i = 0; i < totalMazeHeight; i++) {
@@ -263,19 +326,18 @@ void solveMaze(int normal) {
     // Directions: right, down, left, up
     int directions[4][2] = {{0, 1}, {1, 0}, {0, -1}, {-1, 0}};
 
-
     // Start solving from the entrance
     if(normal == 1){
         // x, y, curDirection, visited int array, direction array
-        solveMazeUtil(0, 1, 0, visited, directions);
+        solveMazeUtil(0, 1, 0, visited, directions, 0, normal);
     }
-    else{
+    else{ // Case where the user could be stuck anywhere and a path has to be generated to get to the end
         int yInput, xInput;
-        printf("Enter the row (y): \n");
+        printf("Enter the row (y): \n"); // Remove these and take in a input
         scanf("%d", &yInput);
         printf("Now enter the col (x): \n");
         scanf("%d", &xInput);
-        solveMazeUtil(xInput, yInput, 0, visited, directions);
+        solveMazeUtil(xInput, yInput, 0, visited, directions, 0, normal);
     }
 
     // x, y, curDirection
@@ -287,8 +349,6 @@ void solveMaze(int normal) {
     }
     free(visited);
 }
-
-
 
 void printSolution() {
 	// printf("\nY: X:0 1 2 3 4 5 6 7 8 9 1011122314151617181920\n");
@@ -310,3 +370,18 @@ void printSolution() {
         printf("\n");
     }
 }
+
+void printBeginToEndSol() { 
+    for (int i = 0; i < solLength; i++) { 
+        printf("%c", beginToEndSol[i]); 
+    } 
+    printf("\n"); 
+}
+
+void printAnywhereSol(){
+    for(int i = 0; i < aSolLength; i++){
+        printf("%c", anywhereSol[i]);
+    }
+    printf("\n");
+}
+
