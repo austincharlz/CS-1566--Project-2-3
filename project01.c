@@ -37,17 +37,20 @@ float prevX=512, prevY=512, prevZ=512;
 GLboolean cpGenerate = true;
 
 GLuint ctm_location;
+// GLuint sun_ctm_location;
 GLuint model_view_location;
 GLuint projection_location;
 
 int mazeSizeX, mazeSizeY;
 int num_vertices = 0; // CALCULATE NUMBER OF TRIANGLES NEEDED USING NUMBER OF CUBES NEEDED
+int sun_vertices = 36; // sun block's vertex count
 int vertCount = 0;
 int blockIndex = 0;	// global so you don't have to provide it to every call of placeBlock
 
-mat4 current_transformation_matrix = {{1,0,0,0},{0,1,0,0},{0,0,1,0},{0,0,0,1}};
+mat4 ctm = {{1,0,0,0},{0,1,0,0},{0,0,1,0},{0,0,0,1}};
 mat4 model_view = {{1,0,0,0},{0,1,0,0},{0,0,1,0},{0,0,0,1}};
 mat4 projection = {{1,0,0,0},{0,1,0,0},{0,0,1,0},{0,0,0,1}};
+// mat4 sun_ctm = {{1,0,0,0},{0,1,0,0},{0,0,1,0},{0,0,0,1}};
 mat4 trans_matrix = {{1,0,0,0},{0,1,0,0},{0,0,1,0},{0,0,0,1}};
 
 vec2 *tex_coords;
@@ -297,8 +300,9 @@ void init(void)
 
     srand(time(NULL)); // Sets the random seed for RNG
 
-	int num_blocks = (mazeSizeX * 2 + 1) * (mazeSizeY * 2 + 1) * 3;
-	num_vertices = 36 * num_blocks;
+	// numBlocks = actualMazeX * actualMazeY * (3 = mazeHeightZ)
+	int num_blocks = (mazeSizeX * 2 + 1) * (mazeSizeY * 2 + 1) * 3 + 1;
+	num_vertices = 36 * (num_blocks + 1);	// +1 for sun_block!
 
     // malloc()ate for blocks and texture coordinates
     positions = (vec4 *) malloc(sizeof(vec4) * num_vertices);
@@ -393,6 +397,8 @@ void init(void)
 	// assigning all important uniforms
     ctm_location = glGetUniformLocation(program, "ctm");
     printf("[textureTemplate] ctm_location: %i\n", ctm_location);
+    // sun_ctm_location = glGetUniformLocation(program, "sun_ctm");
+    // printf("[textureTemplate] sun_ctm_location: %i\n", sun_ctm_location);
     model_view_location = glGetUniformLocation(program, "model_view");
     printf("[textureTemplate] model_view_location: %i\n", model_view_location);
     projection_location = glGetUniformLocation(program, "projection");
@@ -405,7 +411,7 @@ void init(void)
     // Goes through and checks the depth of the objects and sets the background
     glEnable(GL_CULL_FACE);
     glEnable(GL_DEPTH_TEST);
-    glClearColor(0.0, 0.0, 0.0, 1.0); // Pretty sure this is the background color
+    glClearColor(0.0, 0.0, 0.0, 1.0);
     glDepthRange(1,0);
 }
 
@@ -416,15 +422,73 @@ void display(void)
     glPolygonMode(GL_FRONT, GL_FILL); // Fills the front fully with color
     glPolygonMode(GL_BACK, GL_LINE); // The back of the object is only an outline
 
-    glUniformMatrix4fv(ctm_location, 1, GL_FALSE, (float*) &current_transformation_matrix); //TODO: Mouse added things
-    
-    glDrawArrays(GL_TRIANGLES, 0, num_vertices); // Draw triangles starting at the beginning index which is 0
+    // glUniformMatrix4fv(ctm_location, 1, GL_FALSE, (float*) &sun_ctm); //TODO: Mouse added things
+    // glDrawArrays(GL_TRIANGLES, 0, sun_vertices); // Draw triangles starting at the beginning index which is 0
+
+    // glDrawArrays(GL_TRIANGLES, sun_vertices, num_vertices); // Draw triangles starting at the beginning index which is sun_vertices - USING 0 FOR SUN
+    glUniformMatrix4fv(ctm_location, 1, GL_FALSE, (GLfloat *) &ctm);
+    glUniformMatrix4fv(model_view_location, 1, GL_FALSE, (GLfloat *) &model_view);
+    glUniformMatrix4fv(projection_location, 1, GL_FALSE, (GLfloat *) &projection);
+    glDrawArrays(GL_TRIANGLES, 0, num_vertices); // Draw triangles starting at the beginning index which is sun_vertices - USING 0 FOR SUN
 
     glutSwapBuffers();
 }
 
+void look_at(float eye_x, float eye_y, float eye_z, float at_x, float at_y, float at_z, float up_x, float up_y, float up_z ) {
+	/*
+		ROTATION: 
+			viewing 01 - sline 23
+			viewing 02 - slide 19
+			10-08-24 video
+		TRANSLATION:
+			to negation of eye_point
+			mat4 look_translate = translate(-eye_x, -eye_y, -eye_z)???
+
+		model_view = RT!!!
+		model_view = matMult(R, T)!!!
+	*/
+	
+	// constructing rotation matrix
+	// USE 0 AT END FOR VECTORS AND 1 FOR POINTS IDIOT
+	vec4 vpn = (vec4) {(eye_x - at_x), (eye_y - at_y), (eye_z - at_z), 0};
+	vec4 n = normalize(vpn);
+
+	vec4 v_up = (vec4) {up_x, up_y, up_z, 0};
+	vec4 u_cross = crossProduct(v_up, n);
+	vec4 u = normalize(u_cross);
+
+	vec4 v_cross = crossProduct(n, u);
+	vec4 v = normalize(v_cross);
+
+	mat4 R = (mat4) {
+		{u.x, v.x, n.x, 0},
+		{u.y, v.y, n.y, 0},
+		{u.z, v.z, n.z, 0},
+		{0,   0,   0,   1}
+	};
+
+	// constructing translation matrix
+	vec4 vrp = (vec4) {eye_x, eye_y, eye_z, 1};	// eye point
+	mat4 T = translate(-vrp.x, -vrp.y, -vrp.z);
+
+	// V = RT
+	model_view = matMult(R, T);
+}
+
+void ortho(float left, float right, float bottom, float top, float near, float far) {
+	mat4 temp;
+	temp.x = (vec4) {(2/(right-left)), 0, 0, 0};
+	temp.y = (vec4) {0, (2/(top - bottom)), 0, 0};
+	temp.z = (vec4) {0, 0, (2/(near-far)), 0};
+	temp.w = (vec4) {-((right+left)/(right-left)), -((top+bottom)/(top-bottom)), -((near+far)/(near-far)), 1};
+
+	projection = temp;
+}
+
 void mouse(int button, int state, int x, int y)
 {
+	look_at(0, 0, (2 * mazeSizeX) + 1, 0, 0, 0, 0, 1, 0);
+	ortho(15, -15, 15, -15, 15, -15);
     if(button == GLUT_LEFT_BUTTON){
         prevX = (x*2.0/511.0)-1;
         prevY = -(y*2.0/511.0)+1;
@@ -433,11 +497,11 @@ void mouse(int button, int state, int x, int y)
     
     if(button == 3){ // Scroll wheel up
         mat4 scale_matrix = scale(1.02,1.02,1.02);
-        current_transformation_matrix = matMult(scale_matrix, current_transformation_matrix);
+        ctm = matMult(scale_matrix, ctm);
     }
     if(button == 4){ // Scroll wheel down
         mat4 scale_matrix = scale(1/1.02,1/1.02,1/1.02);
-        current_transformation_matrix = matMult(scale_matrix, current_transformation_matrix);
+        ctm = matMult(scale_matrix, ctm);
     }
     glutPostRedisplay();
 }
@@ -494,7 +558,7 @@ void motion(int x, int y){ //TODO: Edit this to rotate the pyramid, add a rotate
         mat4 rot_matrix = matMult(xRotation,matMult(yRotation_neg,matMult(rotateZ(theta),matMult(yRotation, xRotation_neg))));
 
         // matMult to add to the transformation matrix
-        current_transformation_matrix = matMult(rot_matrix, current_transformation_matrix);
+        ctm = matMult(rot_matrix, ctm);
 
     }
 
@@ -517,10 +581,10 @@ void keyboard(unsigned char key, int mousex, int mousey)
 #endif
 	} else if(key == 'i'){ // Scroll wheel up - ALSO ADDING KEY 'i' BECAUSE MACOS SUCKS
         mat4 scale_matrix = scale(1.02,1.02,1.02);
-        current_transformation_matrix = matMult(scale_matrix, current_transformation_matrix);
+        ctm = matMult(scale_matrix, ctm);
     } else if(key == 'o'){ // Scroll wheel down - ALSO ADDING KEY 'O' BECAUSE MACOS SUCKS
         mat4 scale_matrix = scale(1/1.02,1/1.02,1/1.02);
-        current_transformation_matrix = matMult(scale_matrix, current_transformation_matrix);
+        ctm = matMult(scale_matrix, ctm);
     }
 
     // glutPostRedisplay();
@@ -529,8 +593,8 @@ void keyboard(unsigned char key, int mousex, int mousey)
 int main(int argc, char **argv)
 {
 	// default size will be overridden if correct args are provided
-	mazeSizeX = 10;
-	mazeSizeY = 10;
+	mazeSizeX = 5;
+	mazeSizeY = 5;
 	if (argc == 3) {	// args are in the format of ./programName X Y
 		mazeSizeX = atoi(argv[1]);
 		mazeSizeY = atoi(argv[2]);	

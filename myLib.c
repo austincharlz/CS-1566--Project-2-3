@@ -62,6 +62,10 @@ float magOfVec(vec4 v){
 }
 
 vec4 normalize(vec4 v){
+	// adding a case to handle zero vectors so nothing nans out
+	if (v.x == 0 && v.y == 0 && v.z == 0 && v.w == 0) {
+		return (vec4) {0, 0, 0, 0};
+	}
 
     // Formula is 1/|v| * vector column
     float mag = magOfVec(v);
