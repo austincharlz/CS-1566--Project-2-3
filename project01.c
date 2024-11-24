@@ -331,7 +331,7 @@ void init(void)
 
     // Calculate the total number of blocks (maze blocks + pyramid blocks)
     int num_blocks = ((mazeSizeX * 2 + 1) * (mazeSizeY * 2 + 1) * 3) + ((mazeSizeX * 3 + 2) * (mazeSizeY * 3 + 2) * (mazeSizeX / 2));
-    num_vertices = 36 * num_blocks;
+    num_vertices = 36 * num_blocks + 1;
 
     // Allocate memory for blocks and texture coordinates
     positions = (vec4 *) malloc(sizeof(vec4) * num_vertices);
