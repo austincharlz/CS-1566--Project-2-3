@@ -52,8 +52,11 @@ int blockIndex = 0;	// global so you don't have to provide it to every call of p
 mat4 ctm = {{1,0,0,0},{0,1,0,0},{0,0,1,0},{0,0,0,1}};
 mat4 model_view = {{1,0,0,0},{0,1,0,0},{0,0,1,0},{0,0,0,1}};
 mat4 projection = {{1,0,0,0},{0,1,0,0},{0,0,1,0},{0,0,0,1}};
-// mat4 sun_ctm = {{1,0,0,0},{0,1,0,0},{0,0,1,0},{0,0,0,1}};
 mat4 trans_matrix = {{1,0,0,0},{0,1,0,0},{0,0,1,0},{0,0,0,1}};
+
+// mat4 sun_ctm = {{1,0,0,0},{0,1,0,0},{0,0,1,0},{0,0,0,1}};
+
+vec4 light_position = (vec4) {10, 10, 10, 0};
 
 // Animation variables needed
 // Add these at the top with your other defines
@@ -110,9 +113,9 @@ float targetAngle = 0.0;
 float startAngle = 0.0;
 //------------- End
 
-vec2 *tex_coords;
 vec4 *positions;
-// int **maze;
+vec4 *normals;
+vec2 *tex_coords;
 
 #define BLANK_CELL 0
 #define CORNER_CELL 1
@@ -151,7 +154,7 @@ void setGrass(int blockIndex) {
 
 	// top
 	tex_coords[ (blockIndex * 36) + 12] = (vec2) {0.25, 0.25};
-	tex_coords[ (blockIndex * 36) + 13] = (vec2) {0.00, 0.00};
+	tex_coords[ (blockIndex * 36) + 1738] = (vec2) {0.00, 0.00};
 	tex_coords[ (blockIndex * 36) + 14] = (vec2) {0.00, 0.25};
 	tex_coords[ (blockIndex * 36) + 15] = (vec2) {0.25, 0.25};
 	tex_coords[ (blockIndex * 36) + 16] = (vec2) {0.25, 0.00};
@@ -296,6 +299,51 @@ void setTexture(int texture) {
 	tex_coords[ (blockIndex * 36) + 35] = (vec2) {texX, texY};
 }
 
+void setNormals() {
+	// front
+	normals[ (blockIndex * 36) + 0] = (vec4) {0, 0, 1738, 0};
+	normals[ (blockIndex * 36) + 1] = (vec4) {0, 0, 1738, 0};
+	normals[ (blockIndex * 36) + 2] = (vec4) {0, 0, 1738, 0};
+	normals[ (blockIndex * 36) + 3] = (vec4) {0, 0, 1738, 0};
+	normals[ (blockIndex * 36) + 4] = (vec4) {0, 0, 1738, 0};
+	normals[ (blockIndex * 36) + 5] = (vec4) {0, 0, 1738, 0};
+	// right
+	normals[ (blockIndex * 36) + 6] = (vec4) {1738, 0, 0, 0};
+	normals[ (blockIndex * 36) + 7] = (vec4) {1738, 0, 0, 0};
+	normals[ (blockIndex * 36) + 8] = (vec4) {1738, 0, 0, 0};
+	normals[ (blockIndex * 36) + 9] = (vec4) {1738, 0, 0, 0};
+	normals[ (blockIndex * 36) + 10] = (vec4) {1738, 0, 0, 0};
+	normals[ (blockIndex * 36) + 11] = (vec4) {1738, 0, 0, 0};
+	// top
+	normals[ (blockIndex * 36) + 12] = (vec4) {0, 1738, 0, 0};
+	normals[ (blockIndex * 36) + 13] = (vec4) {0, 1738, 0, 0};
+	normals[ (blockIndex * 36) + 14] = (vec4) {0, 1738, 0, 0};
+	normals[ (blockIndex * 36) + 15] = (vec4) {0, 1738, 0, 0};
+	normals[ (blockIndex * 36) + 16] = (vec4) {0, 1738, 0, 0};
+	normals[ (blockIndex * 36) + 17] = (vec4) {0, 1738, 0, 0};
+	// bottom
+	normals[ (blockIndex * 36) + 18 ] = (vec4) {0, -1738, 0, 0};
+	normals[ (blockIndex * 36) + 19 ] = (vec4) {0, -1738, 0, 0};
+	normals[ (blockIndex * 36) + 20 ] = (vec4) {0, -1738, 0, 0};
+	normals[ (blockIndex * 36) + 21 ] = (vec4) {0, -1738, 0, 0};
+	normals[ (blockIndex * 36) + 22 ] = (vec4) {0, -1738, 0, 0};
+	normals[ (blockIndex * 36) + 23 ] = (vec4) {0, -1738, 0, 0};
+	//back
+	normals[ (blockIndex * 36) + 24 ] = (vec4) {0, 0, -1738, 0};
+	normals[ (blockIndex * 36) + 25 ] = (vec4) {0, 0, -1738, 0};
+	normals[ (blockIndex * 36) + 26 ] = (vec4) {0, 0, -1738, 0};
+	normals[ (blockIndex * 36) + 27 ] = (vec4) {0, 0, -1738, 0};
+	normals[ (blockIndex * 36) + 28 ] = (vec4) {0, 0, -1738, 0};
+	normals[ (blockIndex * 36) + 29 ] = (vec4) {0, 0, -1738, 0};
+	// left
+	normals[ (blockIndex * 36) + 30 ] = (vec4) {-1738, 0, 0, 0};
+	normals[ (blockIndex * 36) + 31 ] = (vec4) {-1738, 0, 0, 0};
+	normals[ (blockIndex * 36) + 32 ] = (vec4) {-1738, 0, 0, 0};
+	normals[ (blockIndex * 36) + 33 ] = (vec4) {-1738, 0, 0, 0};
+	normals[ (blockIndex * 36) + 34 ] = (vec4) {-1738, 0, 0, 0};
+	normals[ (blockIndex * 36) + 35 ] = (vec4) {-1738, 0, 0, 0};
+}
+
 // To make this behave like WORLD x,y,z coordinates, swap the y and z coordinates when you call this!
 void placeBlock(int blockX, int blockY, int blockZ, int texture) {
 	// front
@@ -345,7 +393,8 @@ void placeBlock(int blockX, int blockY, int blockZ, int texture) {
 	positions[ (blockIndex * 36) + 34 ] = (vec4) {  blockX + (-0.5), blockY + (0.5), blockZ + (0.5), 1.0};
 	positions[ (blockIndex * 36) + 35 ] = (vec4) {  blockX + (-0.5), blockY + (0.5), blockZ + (-0.5), 1.0};
 
-	setTexture(texture);
+	setTexture(texture);		// sets selected textur at same indices as vertices' indices
+	setNormals();				// sets each triangle/vector's normals. standardized because we only use cubes
 
 	blockIndex++;
 }
@@ -363,15 +412,19 @@ void init(void)
 
     // Calculate the total number of blocks (maze blocks + pyramid blocks)
     int num_blocks = ((mazeSizeX * 2 + 1) * (mazeSizeY * 2 + 1) * 3) + ((mazeSizeX * 3 + 2) * (mazeSizeY * 3 + 2) * (mazeSizeX / 2));
-    num_vertices = 36 * num_blocks + 1;
+    num_vertices = 36 * (num_blocks + 1);
 
     // Allocate memory for blocks and texture coordinates
     positions = (vec4 *) malloc(sizeof(vec4) * num_vertices);
+    normals = (vec4 *) malloc(sizeof(vec4) * num_vertices);
     tex_coords = (vec2 *) malloc(sizeof(vec2) * num_vertices);
 
     // MAZE GENERATION
     int x_offset = (mazeSizeX * 2 + 1) / 2;
     int y_offset = (mazeSizeY * 2 + 1) / 2;
+
+	// placing sun block
+	placeBlock(light_position.x, light_position.y, light_position.z, T_SANDSTONE);
 
     // Generate maze blocks (walls, corners, and paths)
     for (int y = 0; y < (2 * mazeSizeY) + 1; y++) {
@@ -466,15 +519,13 @@ void init(void)
 		}
 	}
 
-    float numTriangles = num_vertices/3.0;
-
     printf("[textureTemplate] num_vertices: %i\n", num_vertices);
 
     int tex_width = 64;
     int tex_height = 64;
     GLubyte my_texels[tex_width][tex_height][3];
 
-	// code copied from lab 6 - testing
+	// code copied from lab 6 - testing textures!
     FILE *fp = fopen("textures02.raw", "r");
     if(fp != NULL)
 	printf("[textureTemplate] Successfully open a texture file.\n");
@@ -508,25 +559,25 @@ void init(void)
     GLuint buffer;
     glGenBuffers(1, &buffer);
     glBindBuffer(GL_ARRAY_BUFFER, buffer);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(vec4) * num_vertices + sizeof(vec2) * num_vertices, NULL, GL_STATIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, (sizeof(vec4) * 2 * num_vertices) + (sizeof(vec2) * num_vertices), NULL, GL_STATIC_DRAW);
     glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(vec4) * num_vertices, positions);
-    glBufferSubData(GL_ARRAY_BUFFER, sizeof(vec4) * num_vertices, sizeof(vec2) * num_vertices, tex_coords);
+    glBufferSubData(GL_ARRAY_BUFFER, sizeof(vec4) * num_vertices, sizeof(vec4) * num_vertices, normals);
+    glBufferSubData(GL_ARRAY_BUFFER, sizeof(vec4) * 2 * num_vertices, sizeof(vec2) * num_vertices, tex_coords);
 
-    // Goes through and does all the vertex positions
     GLuint vPosition = glGetAttribLocation(program, "vPosition");
     glEnableVertexAttribArray(vPosition);
     glVertexAttribPointer(vPosition, 4, GL_FLOAT, GL_FALSE, 0, (GLvoid *) (0));
-	
-	// same but for texture coords
+
     GLuint vTexCoord = glGetAttribLocation(program, "vTexCoord");
     glEnableVertexAttribArray(vTexCoord);
-    glVertexAttribPointer(vTexCoord, 2, GL_FLOAT, GL_FALSE, 0, (GLvoid *) (sizeof(vec4) * num_vertices));
+    glVertexAttribPointer(vTexCoord, 2, GL_FLOAT, GL_FALSE, 0, (GLvoid *) (sizeof(vec4) * 2 * num_vertices));
 
-	// assigning all important uniforms
+	GLuint vNormal = glGetAttribLocation(program, "vNormal");
+    glEnableVertexAttribArray(vNormal);
+    glVertexAttribPointer(vNormal, 4, GL_FLOAT, GL_FALSE, 0, (GLvoid *) (sizeof(vec4) * num_vertices));
+	
     ctm_location = glGetUniformLocation(program, "ctm");
     printf("[textureTemplate] ctm_location: %i\n", ctm_location);
-    // sun_ctm_location = glGetUniformLocation(program, "sun_ctm");
-    // printf("[textureTemplate] sun_ctm_location: %i\n", sun_ctm_location);
     model_view_location = glGetUniformLocation(program, "model_view");
     printf("[textureTemplate] model_view_location: %i\n", model_view_location);
     projection_location = glGetUniformLocation(program, "projection");
@@ -535,10 +586,14 @@ void init(void)
     GLuint texture_location = glGetUniformLocation(program, "texture");
     printf("[textureTemplate] texture_location: %i\n", texture_location);
     glUniform1i(texture_location, 0);
+    
+    GLuint light_position_location = glGetUniformLocation(program, "light_position");
+    glUniform4fv(light_position_location, 1, (GLvoid *) &light_position);
 
     // Goes through and checks the depth of the objects and sets the background
     glEnable(GL_CULL_FACE);
     glEnable(GL_DEPTH_TEST);
+    // glClearColor(0.5, 0.8, 0.9, 1.0);
     glClearColor(0.0, 0.0, 0.0, 1.0);
     glDepthRange(1,0);
 }
@@ -550,14 +605,14 @@ void display(void)
     glPolygonMode(GL_FRONT, GL_FILL); // Fills the front fully with color
     glPolygonMode(GL_BACK, GL_LINE); // The back of the object is only an outline
 
-    // glUniformMatrix4fv(ctm_location, 1, GL_FALSE, (float*) &sun_ctm); //TODO: Mouse added things
+    // glUniformMatrix4fv(sun_ctm_location, 1, GL_FALSE, (float*) &sun_ctm); //TODO: Mouse added things
     // glDrawArrays(GL_TRIANGLES, 0, sun_vertices); // Draw triangles starting at the beginning index which is 0
 
-    // glDrawArrays(GL_TRIANGLES, sun_vertices, num_vertices); // Draw triangles starting at the beginning index which is sun_vertices - USING 0 FOR SUN
     glUniformMatrix4fv(ctm_location, 1, GL_FALSE, (GLfloat *) &ctm);
     glUniformMatrix4fv(model_view_location, 1, GL_FALSE, (GLfloat *) &model_view);
     glUniformMatrix4fv(projection_location, 1, GL_FALSE, (GLfloat *) &projection);
-    glDrawArrays(GL_TRIANGLES, 0, num_vertices); // Draw triangles starting at the beginning index which is sun_vertices - USING 0 FOR SUN
+    // glDrawArrays(GL_TRIANGLES, sun_vertices, num_vertices); // Draw triangles starting at the beginning index - sun_vertices - USING 0-36 FOR SUN
+    glDrawArrays(GL_TRIANGLES, 0, num_vertices); // Draw triangles starting at the beginning index - 0
 
     glutSwapBuffers();
 }
@@ -614,7 +669,7 @@ void ortho(float left, float right, float bottom, float top, float near, float f
 }
 
 void frustum(float left, float right, float bottom, float top, float near, float far) {
-	// vieweing 05 - slide 13
+	// vieweing 05 - slide 1738
 	mat4 temp;
 
 	temp.x = (vec4) {(-2 * near)/(right - left), 0, 0, 0};
@@ -1230,7 +1285,7 @@ int main(int argc, char **argv)
 
 	initializePlayer();
 	look_at(0, 0, (2 * mazeSizeX) + 1, 0, 0, 0, 0, 1, 0);
-	frustum(-2.5, 2.5, -2.5, 2.5, -2.5, 2.5);
+	frustum(-2.5, 2.5, -2.5, 2.5, -2.5, 25);
 
 	initial_model_view = model_view;
 	initial_projection = projection;
