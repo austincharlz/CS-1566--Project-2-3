@@ -40,6 +40,7 @@ GLuint ctm_location;
 // GLuint sun_ctm_location;
 GLuint model_view_location;
 GLuint projection_location;
+GLuint light_skip_location;
 
 int mazeSizeX, mazeSizeY;
 int num_vertices = 0; // CALCULATE NUMBER OF TRIANGLES NEEDED USING NUMBER OF CUBES NEEDED
@@ -57,14 +58,15 @@ mat4 trans_matrix = {{1,0,0,0},{0,1,0,0},{0,0,1,0},{0,0,0,1}};
 // mat4 sun_ctm = {{1,0,0,0},{0,1,0,0},{0,0,1,0},{0,0,0,1}};
 
 // static sun point!!!
-vec4 light_position = (vec4) {10, 10, 10, 0};
+vec4 light_position = (vec4) {0, -10, 0, 0};
+int light_skip = 0;
 
 // Animation variables needed
 // Add these at the top with your other defines
 #define EYE_HEIGHT 1.05 // Height of player
 #define NEAR_PLANE -0.1 // closer  player view to not see through walls
 // #define FAR_PLANE -10.0 // Depth
-#define FRUSTUM_WIDTH 0.1 // Tighter view
+#define FRUSTUM_WIDTH 0.085 // Tighter view
 #define LOOK_DISTANCE 1.0
 #define NONE 0
 #define RESET_VIEW 1
@@ -76,6 +78,7 @@ vec4 light_position = (vec4) {10, 10, 10, 0};
 #define TURN_LEFT 7
 #define TURN_RIGHT 8
 #define AUTO_SOLVE 9
+#define ANIMATION_STEPS 50
 mat4 initial_ctm = {{1,0,0,0},{0,1,0,0},{0,0,1,0},{0,0,0,1}};
 mat4 initial_model_view = {{1,0,0,0},{0,1,0,0},{0,0,1,0},{0,0,0,1}};
 mat4 initial_projection = {{1,0,0,0},{0,1,0,0},{0,0,1,0},{0,0,0,1}};
@@ -86,7 +89,7 @@ mat4 animation_start_ctm;
 mat4 animation_start_model_view;
 mat4 animation_start_projection;
 float animation_progress = 0.0;
-// float look_distance = 0;
+float look_distance = 0;
 float far_plane = 0;
 int is_animating=0.0;
 int current_step=0.0;
@@ -587,6 +590,10 @@ void init(void)
     GLuint texture_location = glGetUniformLocation(program, "texture");
     printf("[textureTemplate] texture_location: %i\n", texture_location);
     glUniform1i(texture_location, 0);
+
+    light_skip_location = glGetUniformLocation(program, "light_skip");
+    glUniform1i(light_skip_location, light_skip);
+
     
     GLuint light_position_location = glGetUniformLocation(program, "light_position");
     glUniform4fv(light_position_location, 1, (GLvoid *) &light_position);
@@ -594,8 +601,8 @@ void init(void)
     // Goes through and checks the depth of the objects and sets the background
     glEnable(GL_CULL_FACE);
     glEnable(GL_DEPTH_TEST);
-    glClearColor(0.5, 0.8, 0.9, 1.0);
-    // glClearColor(0.0, 0.0, 0.0, 1.0);
+    // glClearColor(0.5, 0.8, 0.9, 1.0);
+    glClearColor(0.0, 0.0, 0.0, 1.0);
     glDepthRange(1,0);
 }
 
@@ -1032,6 +1039,22 @@ void keyboard(unsigned char key, int mousex, int mousey)
 		solveState = SOLVE_TURN;
 		currentState = AUTO_SOLVE;
 		is_animating = 1;
+	} else if (key == 'h') {	// RESET LIGHTS
+		light_skip = 0;
+		glUniform1i(light_skip_location, light_skip);
+		glutPostRedisplay();
+	} else if (key == 'j') {	// SKIP AMBIENCE
+		light_skip = 1;
+		glUniform1i(light_skip_location, light_skip);
+		glutPostRedisplay();
+	} else if (key == 'k') {	// SKIP SPECULAR
+		light_skip = 2;
+		glUniform1i(light_skip_location, light_skip);
+		glutPostRedisplay();
+	} else if (key == 'l') {	// SKIP DIFFUSION
+		light_skip = 3;
+		glUniform1i(light_skip_location, light_skip);
+		glutPostRedisplay();
 	}
     // glutPostRedisplay();
 }
@@ -1073,7 +1096,7 @@ void idle(void){
 			current_step = 0;
         }
         else if(currentState == RESET_VIEW) {
-            if(current_step == 300) {
+            if(current_step == ANIMATION_STEPS) {
                 // Animation complete
                 ctm = initial_ctm;
                 model_view = initial_model_view;
@@ -1083,7 +1106,7 @@ void idle(void){
 				current_step = 0;
             } else {
                 // Calculate step progress
-                float progress = (float)current_step / 300;
+                float progress = (float)current_step / ANIMATION_STEPS;
                 
                 // calc all matrices
                 ctm = calculateNewCameraAngle(animation_start_ctm, initial_ctm, progress);
@@ -1093,7 +1116,7 @@ void idle(void){
             }
         }
 		else if(currentState == PLAYER_VIEW){
-			if(current_step == 300) {
+			if(current_step == ANIMATION_STEPS) {
 				//Animation is done
 				ctm = entranceCTM;
 				model_view = entranceMV;
@@ -1102,7 +1125,7 @@ void idle(void){
 				is_animating = 0;
 				current_step = 0;
 			}else{
-				float progress = (float)current_step/300;
+				float progress = (float)current_step/ANIMATION_STEPS;
 				// calc all matrices
                 ctm = calculateNewCameraAngle(animation_start_ctm, entranceCTM, progress);
                 model_view = calculateNewCameraAngle(animation_start_model_view, entranceMV, progress);
@@ -1112,14 +1135,14 @@ void idle(void){
 		}
 		else if(currentState == WALK_FORWARD || currentState == WALK_BACKWARD || 
                 currentState == STRAFE_LEFT || currentState == STRAFE_RIGHT) {
-            if(current_step == 300) {
+            if(current_step == ANIMATION_STEPS) {
 				// Use stored target matrix directly
 				model_view = turnTargetMV;
 				currentState = NONE;
 				is_animating = 0;
 				current_step = 0;
 			} else {
-				float progress = (float)current_step / 300;
+				float progress = (float)current_step / ANIMATION_STEPS;
 				// Animate to target matrix
 				model_view = calculateNewCameraAngle(animation_start_model_view, turnTargetMV, progress);
 				current_step++;
@@ -1223,7 +1246,7 @@ void idle(void){
 					}
 				}
 				
-				if(current_step == 300) {
+				if(current_step == ANIMATION_STEPS) {
 					// Movement complete
 					look_at(playerX, EYE_HEIGHT, playerZ,
 						lookX, EYE_HEIGHT, lookZ,
@@ -1235,7 +1258,7 @@ void idle(void){
 					solveState = SOLVE_TURN;
 					pathIndex++;
 				} else {
-					float progress = (float)current_step / 300;
+					float progress = (float)current_step / ANIMATION_STEPS;
 					model_view = calculateNewCameraAngle(animation_start_model_view, model_view, progress);
 					current_step++;
 				}
