@@ -56,6 +56,7 @@ mat4 trans_matrix = {{1,0,0,0},{0,1,0,0},{0,0,1,0},{0,0,0,1}};
 
 // mat4 sun_ctm = {{1,0,0,0},{0,1,0,0},{0,0,1,0},{0,0,0,1}};
 
+// static sun point!!!
 vec4 light_position = (vec4) {10, 10, 10, 0};
 
 // Animation variables needed
@@ -593,8 +594,8 @@ void init(void)
     // Goes through and checks the depth of the objects and sets the background
     glEnable(GL_CULL_FACE);
     glEnable(GL_DEPTH_TEST);
-    // glClearColor(0.5, 0.8, 0.9, 1.0);
-    glClearColor(0.0, 0.0, 0.0, 1.0);
+    glClearColor(0.5, 0.8, 0.9, 1.0);
+    // glClearColor(0.0, 0.0, 0.0, 1.0);
     glDepthRange(1,0);
 }
 
