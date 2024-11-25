@@ -59,9 +59,9 @@ mat4 trans_matrix = {{1,0,0,0},{0,1,0,0},{0,0,1,0},{0,0,0,1}};
 // Add these at the top with your other defines
 #define EYE_HEIGHT 1.05 // Height of player
 #define NEAR_PLANE -0.1 // closer  player view to not see through walls
-#define FAR_PLANE -10.0 // Depth
+// #define FAR_PLANE -10.0 // Depth
 #define FRUSTUM_WIDTH 0.1 // Tighter view
-// #define LOOK_DISTANCE 1.0
+#define LOOK_DISTANCE 1.0
 #define NONE 0
 #define RESET_VIEW 1
 #define PLAYER_VIEW 2
@@ -71,6 +71,7 @@ mat4 trans_matrix = {{1,0,0,0},{0,1,0,0},{0,0,1,0},{0,0,0,1}};
 #define STRAFE_RIGHT 6
 #define TURN_LEFT 7
 #define TURN_RIGHT 8
+#define AUTO_SOLVE 9
 mat4 initial_ctm = {{1,0,0,0},{0,1,0,0},{0,0,1,0},{0,0,0,1}};
 mat4 initial_model_view = {{1,0,0,0},{0,1,0,0},{0,0,1,0},{0,0,0,1}};
 mat4 initial_projection = {{1,0,0,0},{0,1,0,0},{0,0,1,0},{0,0,0,1}};
@@ -81,7 +82,8 @@ mat4 animation_start_ctm;
 mat4 animation_start_model_view;
 mat4 animation_start_projection;
 float animation_progress = 0.0;
-float look_distance = 0;
+// float look_distance = 0;
+float far_plane = 0;
 int is_animating=0.0;
 int current_step=0.0;
 int currentState=NONE;
@@ -90,6 +92,14 @@ float playerX;
 float playerZ;
 int lookX;
 int lookZ;
+
+int pathIndex = 0;
+int subAnimationStep = 0;
+#define SOLVE_TURN 10
+#define SOLVE_MOVE 11
+int solveState = SOLVE_TURN;
+
+char* fullSolution = NULL;
 
 // Add these as global variables to store matrices for turning
 mat4 turnStartMV;
@@ -704,12 +714,32 @@ void motion(int x, int y){ //TODO: Edit this to rotate the pyramid, add a rotate
     glutPostRedisplay();
 }
 
+void normalizeAngle(float *angle) {
+    while (*angle < -M_PI) *angle += 2 * M_PI;
+    while (*angle > M_PI) *angle -= 2 * M_PI;
+}
+
+void updateLookPosition() {
+
+	// Normalize angle
+	normalizeAngle(&playerAngle);
+    
+    // Update look position
+    lookX = playerX + (LOOK_DISTANCE * cos(playerAngle));
+    lookZ = playerZ + (LOOK_DISTANCE * sin(playerAngle));
+    
+    // Update view matrix directly
+    look_at(playerX, EYE_HEIGHT, playerZ,
+           lookX, EYE_HEIGHT, lookZ,
+           0, 1, 0);
+}
+
 void initializePlayer() {
     // Initialize player position to entrance
 	playerX = -(mazeSizeX) - 1;
 	playerZ = -(mazeSizeY) + 1;
 	playerAngle = 0.0;
-	lookX = playerX + look_distance;
+	lookX = playerX + LOOK_DISTANCE;
 	lookZ = playerZ;  
 }
 
@@ -720,8 +750,8 @@ bool isValidPosition(float x, float z) {
     int mazeZ = (int)(z + (mazeSizeY * 2 + 1) / 2);
     
     // Check if position is within maze bounds
-    if(mazeX < -1 || mazeX >= (2 * mazeSizeX + 1) || 
-       mazeZ < -1 || mazeZ >= (2 * mazeSizeY + 1)) {
+    if(mazeX < -1 || mazeX >= (2 * mazeSizeX + 2) || 
+       mazeZ < -1 || mazeZ >= (2 * mazeSizeY + 2)) {
         return false;
     }
     
@@ -738,8 +768,6 @@ void movePlayer(float newX, float newZ, int moveState) {
         // Calculate target position
         playerX = newX;
         playerZ = newZ;
-        lookX = playerX + cos(playerAngle);
-        lookZ = playerZ + sin(playerAngle);
         
         // Set up target view
         look_at(playerX, EYE_HEIGHT, playerZ,
@@ -764,7 +792,10 @@ void movePlayer(float newX, float newZ, int moveState) {
 void keyboard(unsigned char key, int mousex, int mousey)
 {
 
-	float moveX, moveZ;
+	if(is_animating == 1 && (key == 'w' || key == 'a' || key == 's' || key == 'd' || key == ',' || key == '.')) {
+        return;
+    }
+
     // Causes the program to terminate if the user presses q
     if(key == 'q') {
 		#ifndef __APPLE__
@@ -790,19 +821,12 @@ void keyboard(unsigned char key, int mousex, int mousey)
     } else if(key == 'p') { // Handle player view
         // Calculate entrance position
 		lockTrackBallMovement = 1;
-        // int entranceX = -(mazeSizeX);  // West side
-        // int entranceZ = -(mazeSizeY) + 1; // ENTRANCE LOOKING IN
 
 		// Store the start position
 		animation_start_ctm = ctm;
         animation_start_model_view = model_view;
         animation_start_projection = projection;
 
-		// Reset player position to entrance
-        // playerX = -(mazeSizeX) - 1;
-        // playerZ = -(mazeSizeY) + 1;
-        // lookX = playerX + look_distance;
-        // lookZ = playerZ;
 		initializePlayer();        
 
 		// Set up entrance view with adjusted frustum
@@ -815,133 +839,142 @@ void keyboard(unsigned char key, int mousex, int mousey)
         // frustum(-1.0, 1.0, -1.0, 1.0, -1.0, 1.0);
 		frustum(-FRUSTUM_WIDTH, FRUSTUM_WIDTH, 
                 -FRUSTUM_WIDTH, FRUSTUM_WIDTH, 
-                NEAR_PLANE, FAR_PLANE);
+                NEAR_PLANE, far_plane);
 		entranceP = projection; // Get the new projection view
 
 		// Go back to starting positions
 		model_view = animation_start_model_view;
 		projection = animation_start_projection;
+		ctm = animation_start_ctm;
 
 		current_step = 0;
 		currentState = PLAYER_VIEW;
 		is_animating = 1;
-    } else if(key == 'w'){
-		animation_start_ctm = ctm;
+    } else if(key == 'w' && lockTrackBallMovement == 1){ // WALK FORWARDS
 		animation_start_model_view = model_view;
-		animation_start_projection = projection;
-		
-		moveX = playerX + cos(playerAngle);
-		moveZ = playerZ + sin(playerAngle);
+    
+		// Calculate next position
+		float moveX = playerX + cos(playerAngle);
+		float moveZ = playerZ + sin(playerAngle);
 		
 		if(isValidPosition(moveX, moveZ)) {
 			playerX = moveX;
 			playerZ = moveZ;
-			lookX = playerX + cos(playerAngle);
-			lookZ = playerZ + sin(playerAngle);
+			updateLookPosition();  // This will set both look position and view matrix
+			turnTargetMV = model_view;
+			model_view = animation_start_model_view;
+			
 			current_step = 0;
 			currentState = WALK_FORWARD;
 			is_animating = 1;
 		}
-	} else if(key == 's'){
-		animation_start_ctm = ctm;
+	} else if(key == 's' && lockTrackBallMovement == 1){ // WALK BACKWARDS
 		animation_start_model_view = model_view;
-		animation_start_projection = projection;
-		
-		moveX = playerX - cos(playerAngle);
-		moveZ = playerZ - sin(playerAngle);
+    
+		// calculate next position
+		float moveX = playerX - cos(playerAngle);
+		float moveZ = playerZ - sin(playerAngle);
 		
 		if(isValidPosition(moveX, moveZ)) {
 			playerX = moveX;
 			playerZ = moveZ;
-			lookX = playerX + cos(playerAngle);
-			lookZ = playerZ + sin(playerAngle);
+			updateLookPosition();  // This will set both look position and view matrix
+			turnTargetMV = model_view;
+			model_view = animation_start_model_view;
+			
 			current_step = 0;
 			currentState = WALK_BACKWARD;
 			is_animating = 1;
 		}
-	} else if(key == 'd'){
-		animation_start_ctm = ctm;
+	} else if(key == 'd' && lockTrackBallMovement == 1){
 		animation_start_model_view = model_view;
-		animation_start_projection = projection;
 		
-		moveX = playerX - sin(playerAngle);
-		moveZ = playerZ + cos(playerAngle);
+		// Calculates the perpendicular movemnet
+		float moveX = playerX - sin(playerAngle);
+		float moveZ = playerZ + cos(playerAngle);
 		
 		if(isValidPosition(moveX, moveZ)) {
 			playerX = moveX;
 			playerZ = moveZ;
-			lookX = playerX + cos(playerAngle);
-			lookZ = playerZ + sin(playerAngle);
+			updateLookPosition();  // This will set both look position and view matrix
+			turnTargetMV = model_view;
+			model_view = animation_start_model_view;
+			
 			current_step = 0;
 			currentState = STRAFE_RIGHT;
 			is_animating = 1;
 		}
-	} else if(key == 'a'){
-		animation_start_ctm = ctm;
+	} else if(key == 'a' && lockTrackBallMovement == 1){
 		animation_start_model_view = model_view;
-		animation_start_projection = projection;
-		
-		moveX = playerX + sin(playerAngle);
-		moveZ = playerZ - cos(playerAngle);
+    
+		// Calculates the perpendicular movemnet
+		float moveX = playerX + sin(playerAngle);
+		float moveZ = playerZ - cos(playerAngle);
 		
 		if(isValidPosition(moveX, moveZ)) {
 			playerX = moveX;
 			playerZ = moveZ;
-			lookX = playerX + cos(playerAngle);
-			lookZ = playerZ + sin(playerAngle);
+			updateLookPosition();  // This will set both look position and view matrix
+			turnTargetMV = model_view;
+			model_view = animation_start_model_view;
+			
 			current_step = 0;
 			currentState = STRAFE_LEFT;
 			is_animating = 1;
 		}
-	} else if(key == ','){ // Turn left
-		// Store start matrices
+	} else if(key == ',' && lockTrackBallMovement == 1){ // Turn left
 		animation_start_model_view = model_view;
-		animation_start_projection = projection;
-		animation_start_ctm = ctm;
-		
-		// Calculate target angle and matrices
+    
+		// Calculate new angle
 		targetAngle = playerAngle - M_PI/2;
-		float targetLookX = playerX + cos(targetAngle);
-		float targetLookZ = playerZ + sin(targetAngle);
 		
-		// Store current position and calculate target view
+		float targetLookX = playerX + LOOK_DISTANCE * cos(targetAngle);
+		float targetLookZ = playerZ + LOOK_DISTANCE * sin(targetAngle);
+
+		// Store current angle for animation
 		look_at(playerX, EYE_HEIGHT, playerZ,
 				targetLookX, EYE_HEIGHT, targetLookZ,
-				0, 1, 0);
-				
-		// Store target matrices
-		turnTargetMV = model_view;
+				0, 1 , 0);
 		
-		// Reset to starting position for animation
+		// Set target position and matrix
+		turnTargetMV = model_view;
 		model_view = animation_start_model_view;
 		
 		current_step = 0;
 		currentState = TURN_LEFT;
 		is_animating = 1;
-	} else if(key == '.'){ // Turn right
-		// Store start matrices
+	} else if(key == '.' && lockTrackBallMovement == 1){ // Turn right
+
 		animation_start_model_view = model_view;
-		animation_start_projection = projection;
-		animation_start_ctm = ctm;
-		
-		// Calculate target angle and matrices
+    
+		// Calculate new angle
 		targetAngle = playerAngle + M_PI/2;
-		float targetLookX = playerX + cos(targetAngle);
-		float targetLookZ = playerZ + sin(targetAngle);
 		
-		// Store current position and calculate target view
+		// Store the exact target look position based on 90-degree turn
+		float targetLookX = playerX + LOOK_DISTANCE * cos(targetAngle);
+		float targetLookZ = playerZ + LOOK_DISTANCE * sin(targetAngle);
+
+
+		// Calculate exact target view matrix
 		look_at(playerX, EYE_HEIGHT, playerZ,
 				targetLookX, EYE_HEIGHT, targetLookZ,
 				0, 1, 0);
-				
-		// Store target matrices
-		turnTargetMV = model_view;
 		
-		// Reset to starting position for animation
+		// Set target position and matrix
+		turnTargetMV = model_view;
 		model_view = animation_start_model_view;
 		
 		current_step = 0;
 		currentState = TURN_RIGHT;
+		is_animating = 1;
+	} else if(key == 'g' && lockTrackBallMovement == 1) {
+		animation_start_model_view = model_view;
+		animation_start_projection = projection;
+		animation_start_ctm = ctm;
+		pathIndex = 0;
+		current_step = 0;
+		solveState = SOLVE_TURN;
+		currentState = AUTO_SOLVE;
 		is_animating = 1;
 	}
     // glutPostRedisplay();
@@ -978,9 +1011,10 @@ mat4 calculateNewCameraAngle(mat4 start, mat4 end, float progress) {
 }
 
 void idle(void){
-	if(is_animating) {
+	if(is_animating == 1) {
         if(currentState == NONE) {
             is_animating = 0;
+			current_step = 0;
         }
         else if(currentState == RESET_VIEW) {
             if(current_step == 300) {
@@ -990,6 +1024,7 @@ void idle(void){
                 projection = initial_projection;
                 currentState = NONE;
                 is_animating = 0;
+				current_step = 0;
             } else {
                 // Calculate step progress
                 float progress = (float)current_step / 300;
@@ -1009,6 +1044,7 @@ void idle(void){
 				projection = entranceP;
 				currentState = NONE;
 				is_animating = 0;
+				current_step = 0;
 			}else{
 				float progress = (float)current_step/300;
 				// calc all matrices
@@ -1021,42 +1057,137 @@ void idle(void){
 		else if(currentState == WALK_FORWARD || currentState == WALK_BACKWARD || 
                 currentState == STRAFE_LEFT || currentState == STRAFE_RIGHT) {
             if(current_step == 300) {
-                look_at(playerX, EYE_HEIGHT, playerZ,
-                       lookX, EYE_HEIGHT, lookZ,
-                       0, 1, 0);
-                currentState = NONE;
-                is_animating = 0;
-            } else {
-                float progress = (float)current_step / 300;
-                // Matches structure of other animations
-                ctm = calculateNewCameraAngle(animation_start_ctm, ctm, progress);
-                model_view = calculateNewCameraAngle(animation_start_model_view, model_view, progress);
-                projection = calculateNewCameraAngle(animation_start_projection, projection, progress);
-                current_step++;
-            }
-			// glutPostRedisplay();
+				// Use stored target matrix directly
+				model_view = turnTargetMV;
+				currentState = NONE;
+				is_animating = 0;
+				current_step = 0;
+			} else {
+				float progress = (float)current_step / 300;
+				// Animate to target matrix
+				model_view = calculateNewCameraAngle(animation_start_model_view, turnTargetMV, progress);
+				current_step++;
+			}
         }
 		else if(currentState == TURN_LEFT || currentState == TURN_RIGHT) {
-            if(current_step == 30) {
-                // Animation complete
-                model_view = turnTargetMV;
-                playerAngle = targetAngle;
-                lookX = playerX + cos(playerAngle);
-                lookZ = playerZ + sin(playerAngle);
-                currentState = NONE;
-                is_animating = 0;
-            } else {
-                float progress = (float)current_step / 30;
-                
-                // Interpolate the model view matrix for smooth turning
-                model_view = calculateNewCameraAngle(animation_start_model_view, turnTargetMV, progress);
-                
-                current_step++;
-            }
-        }
+			if(current_step == 100) {
+				// Set exact final angle
+				playerAngle = targetAngle;
+				
+				// Normalize angle to keep it in valid range
+				while (playerAngle < -M_PI) playerAngle += 2 * M_PI;
+				while (playerAngle > M_PI) playerAngle -= 2 * M_PI;
+				
+				// Set exact final position with normalized angle
+				lookX = playerX + LOOK_DISTANCE * cos(playerAngle);
+				lookZ = playerZ + LOOK_DISTANCE * sin(playerAngle);
+				
+				// Set exact final view matrix
+				look_at(playerX, EYE_HEIGHT, playerZ,
+						lookX, EYE_HEIGHT, lookZ,
+						0, 1, 0);
+				
+				currentState = NONE;
+				is_animating = 0;
+				current_step = 0;
+			} else {
+				float progress = (float)current_step / 100;
+				model_view = calculateNewCameraAngle(animation_start_model_view, turnTargetMV, progress);
+				current_step++;
+			}
+
+        }else if(currentState == AUTO_SOLVE) {
+			// Check if we're done with the path
+			if(fullSolution[pathIndex] == '\0') {
+				currentState = NONE;
+				is_animating = 0;
+				return;
+			}
+			
+			// Get current instruction
+			char currentMove = fullSolution[pathIndex];
+			
+			if(solveState == SOLVE_TURN) {
+				// If straight movement, skip turn phase
+				if(currentMove == 'S') {
+					solveState = SOLVE_MOVE;
+					return;
+				}
+				
+				// Handle turn animation
+				if(current_step == 0) {
+					// Set up turn
+					float newAngle = (currentMove == 'L') ? playerAngle - M_PI/2 : playerAngle + M_PI/2;
+					float targetLookX = playerX + cos(newAngle);
+					float targetLookZ = playerZ + sin(newAngle);
+					
+					look_at(playerX, EYE_HEIGHT, playerZ,
+						targetLookX, EYE_HEIGHT, targetLookZ,
+						0, 1, 0);
+					turnTargetMV = model_view;
+					model_view = animation_start_model_view;
+				}
+				
+				// Complete turn
+				if(current_step == 30) {
+					if(currentMove == 'L') {
+						playerAngle -= M_PI/2;
+					} else {
+						playerAngle += M_PI/2;
+					}
+					lookX = playerX + cos(playerAngle);
+					lookZ = playerZ + sin(playerAngle);
+					
+					// Prepare for forward movement
+					animation_start_model_view = model_view;
+					current_step = 0;
+					solveState = SOLVE_MOVE;
+				} else {
+					float progress = (float)current_step / 30;
+					model_view = calculateNewCameraAngle(animation_start_model_view, turnTargetMV, progress);
+					current_step++;
+				}
+			}
+
+			else if(solveState == SOLVE_MOVE) {
+				// Handle forward movement
+				if(current_step == 0) {
+					float moveX = playerX + cos(playerAngle);
+					float moveZ = playerZ + sin(playerAngle);
+					
+					if(isValidPosition(moveX, moveZ)) {
+						playerX = moveX;
+						playerZ = moveZ;
+						lookX = playerX + cos(playerAngle);
+						lookZ = playerZ + sin(playerAngle);
+						
+						look_at(playerX, EYE_HEIGHT, playerZ,
+							lookX, EYE_HEIGHT, lookZ,
+							0, 1, 0);
+					}
+				}
+				
+				if(current_step == 300) {
+					// Movement complete
+					look_at(playerX, EYE_HEIGHT, playerZ,
+						lookX, EYE_HEIGHT, lookZ,
+						0, 1, 0);
+						
+					// Reset for next instruction
+					animation_start_model_view = model_view;
+					current_step = 0;
+					solveState = SOLVE_TURN;
+					pathIndex++;
+				} else {
+					float progress = (float)current_step / 300;
+					model_view = calculateNewCameraAngle(animation_start_model_view, model_view, progress);
+					current_step++;
+				}
+			}
+		}
+		
     }
 	glutPostRedisplay();
-	// }
 }
 
 
