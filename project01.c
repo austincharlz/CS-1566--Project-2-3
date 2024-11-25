@@ -58,14 +58,14 @@ mat4 trans_matrix = {{1,0,0,0},{0,1,0,0},{0,0,1,0},{0,0,0,1}};
 // mat4 sun_ctm = {{1,0,0,0},{0,1,0,0},{0,0,1,0},{0,0,0,1}};
 
 // static sun point!!!
-vec4 light_position = (vec4) {0, -10, 0, 0};
+vec4 light_position = (vec4) {10, 3, 0, 0};
 int light_skip = 0;
 
 // Animation variables needed
 // Add these at the top with your other defines
 #define EYE_HEIGHT 1.05 // Height of player
 #define NEAR_PLANE -0.1 // closer  player view to not see through walls
-// #define FAR_PLANE -10.0 // Depth
+#define FAR_PLANE -10.0 // Depth
 #define FRUSTUM_WIDTH 0.085 // Tighter view
 #define LOOK_DISTANCE 1.0
 #define NONE 0
@@ -90,7 +90,6 @@ mat4 animation_start_model_view;
 mat4 animation_start_projection;
 float animation_progress = 0.0;
 float look_distance = 0;
-float far_plane = 0;
 int is_animating=0.0;
 int current_step=0.0;
 int currentState=NONE;
@@ -902,7 +901,7 @@ void keyboard(unsigned char key, int mousex, int mousey)
         // frustum(-1.0, 1.0, -1.0, 1.0, -1.0, 1.0);
 		frustum(-FRUSTUM_WIDTH, FRUSTUM_WIDTH, 
                 -FRUSTUM_WIDTH, FRUSTUM_WIDTH, 
-                NEAR_PLANE, far_plane);
+                NEAR_PLANE, FAR_PLANE);
 		entranceP = projection; // Get the new projection view
 
 		// Go back to starting positions
@@ -1269,8 +1268,6 @@ void idle(void){
 	glutPostRedisplay();
 }
 
-
-
 int main(int argc, char **argv)
 {
 	// default size will be overridden if correct args are provided
@@ -1309,7 +1306,9 @@ int main(int argc, char **argv)
 
 	initializePlayer();
 	look_at(0, 0, (2 * mazeSizeX) + 1, 0, 0, 0, 0, 1, 0);
-	frustum(-2.5, 2.5, -2.5, 2.5, -2.5, 25);
+	frustum(-5, 5, -5, 5, -5, 25);
+	mat4 scale_matrix = scale(0.6, 0.6, 0.6);
+    ctm = matMult(scale_matrix, ctm);
 
 	initial_model_view = model_view;
 	initial_projection = projection;
