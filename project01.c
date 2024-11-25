@@ -387,44 +387,74 @@ void init(void)
         }
     }
 
-    // ISLAND GENERATION 
-    int baseSizeX = mazeSizeX * 2 + 5;
-    int baseSizeY = mazeSizeY * 2 + 5;
-    int height = baseSizeX > baseSizeY ? baseSizeY / 2 : baseSizeX / 2;
+    // ISLAND GENERATION (Upside-Down Pyramid Beneath the Maze)
+	int baseSizeX = mazeSizeX * 2 + 5;
+	int baseSizeY = mazeSizeY * 2 + 5;
+	int height = baseSizeX > baseSizeY ? baseSizeY / 2 : baseSizeX / 2;
 
-    for (int layer = 0; layer < height; layer++) {
-        int currentSizeX = baseSizeX - 2 * layer;
-        int currentSizeY = baseSizeY - 2 * layer;
+	for (int layer = 0; layer < height; layer++) {
+		int currentSizeX = baseSizeX - 2 * layer;
+		int currentSizeY = baseSizeY - 2 * layer;
 
-        // Loop through each layer of the pyramid
-        for (int y = 0; y < currentSizeY; y++) {
-            for (int x = 0; x < currentSizeX; x++) {
-                // Calculate block position
-                int blockX = x - currentSizeX / 2;
-                int blockY = y - currentSizeY / 2;
-                int blockZ = -(layer + 1);  // Z-coordinate for downward layers
+		// Loop through each layer of the pyramid
+		for (int y = 0; y < currentSizeY; y++) {
+			for (int x = 0; x < currentSizeX; x++) {
+				// Calculate block position
+				int blockX = x - currentSizeX / 2;
+				int blockY = y - currentSizeY / 2;
+				int blockZ = -(layer + 1);  // Z-coordinate for downward layers
 
-                // Randomly skip blocks for realism (50% chance for non-top layers)
-                if (layer > 0 && randInRange(1, 100) < 50) {
-                    continue;  // Skip this block 50% of the time
-                }
+				// Identify edge blocks
+				bool isEdge = (x == 0 || x == currentSizeX - 1 || y == 0 || y == currentSizeY - 1);
 
-				if (randInRange(1, 100) < 50) {  // 20% chance to add a block
-                // Apply texture: grass for top layer, dirt for others
-                int texture = (layer == 0) ? T_GRASS : T_DIRT;
+				// Special handling for the top layer (layer == 0)
+				if (layer == 0) {
+					if (isEdge) {
+						// Randomly skip blocks (remove) with 30% chance
+						if (randInRange(1, 100) < 30) {
+							continue;  // Skip this block
+						}
 
-                // Place an extra block for realism (i.e., add an additional block)
-                placeBlock(blockX, blockZ, blockY, texture);
-            	}
+						// Randomly add blocks with 20% chance
+						if (randInRange(1, 100) < 20) {
+							int texture = T_GRASS;
+							placeBlock(blockX, blockZ, blockY, texture);  // Add extra block
+						}
+					}
 
-                // Apply texture: grass for top layer, dirt for others
-                int texture = (layer == 0) ? T_GRASS : T_DIRT;
+					// Always place blocks for non-edge blocks on the top layer
+					int texture = T_GRASS;
+					placeBlock(blockX, blockZ, blockY, texture);
+					continue;  // Skip further checks for top layer
+				}
 
-                // Place the block in the scene
-                placeBlock(blockX, blockZ, blockY, texture);
-            }
-        }
-    }
+				// For lower layers, apply limited removal logic for inside blocks
+				bool isNearCenter = (x > 1 && x < currentSizeX - 2 && y > 1 && y < currentSizeY - 2);
+
+				if (isNearCenter) {
+					// Reduce block removal probability for inside blocks
+					if (randInRange(1, 100) < 10) {  // Only 10% chance to remove inside blocks
+						continue;  // Skip this block
+					}
+				} else {
+					// Regular block removal for edge-adjacent blocks
+					if (randInRange(1, 100) < 50) {  // 50% chance to remove for non-center blocks
+						continue;
+					}
+				}
+
+				// Randomly add blocks to create more irregularity
+				if (randInRange(1, 100) < 20) {
+					int texture = T_DIRT;
+					placeBlock(blockX, blockZ, blockY, texture);  // Add extra block
+				}
+
+				// Apply texture: grass for top layer, dirt for others
+				int texture = T_DIRT;
+				placeBlock(blockX, blockZ, blockY, texture);
+			}
+		}
+	}
 
     float numTriangles = num_vertices/3.0;
 
