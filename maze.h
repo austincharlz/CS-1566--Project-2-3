@@ -13,7 +13,7 @@ void generateMaze(int xLeft, int xRight, int yUp, int yDown);
 void renderMaze();
 void printMaze();
 int** getMaze(int x, int y);
-void solveMaze(int normal);
+void solveMaze(int n);
 void printSolution();
 
 #endif
